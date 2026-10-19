@@ -126,6 +126,7 @@ Events are kept 4 days.
 | Steps per run | 1000 |
 | Retries per step | 0-20 (default 4) |
 | One call to your app (`timeouts.step`) | default 5 min, between 1 s and 14 min |
+| A whole run (`timeouts.finish`) | no limit by default, at least 1 s |
 | One step's result | 4 MB |
 | A run's output (what the function returns) | 4 MB |
 | Everything a run holds (events + step results + output) | 32 MB |
@@ -176,6 +177,7 @@ even ones that never send events.
 | `500 NoSigningKey` | The app has no `FLOW_SIGNING_KEY`. |
 | `FunctionNotFound` | The engine called a function the app no longer has. Sync, or keep the old function until its runs end. |
 | `TimeoutError` | One call took longer than `timeouts.step`. Split the work into more steps. |
+| `FunctionTimeout` | The run took longer than `timeouts.finish` and was cancelled. |
 | `OutputTooLarge` | A step or the function returned more than 4 MB. Save big data elsewhere (a bucket, a database) and return its ID. |
 | `StateOverflowed` | The run holds more than 32 MB in all. Return less from each step. |
 | `StateLoadFailed` | The SDK could not load a big run's state. If you run your own engine, check `FLOW_BASE_URL`. It is retried. |

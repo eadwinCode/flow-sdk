@@ -103,8 +103,12 @@ type Singleton struct {
 }
 
 // Timeouts sets time limits. Step is the longest one step's HTTP call may take.
+// Finish is the longest the whole run may take, counted from its first step call
+// (time spent queued does not count); a run still going then is cancelled.
+// Zero means the engine's default (Step) or no limit (Finish).
 type Timeouts struct {
-	Step time.Duration
+	Step   time.Duration
+	Finish time.Duration
 }
 
 // FunctionOpts configures a function. Only ID is required.
@@ -147,7 +151,8 @@ type FunctionConfig struct {
 }
 
 type timeoutsJSON struct {
-	Step *string `json:"step,omitempty"`
+	Step   *string `json:"step,omitempty"`
+	Finish *string `json:"finish,omitempty"`
 }
 
 type cancelOnJSON struct {
@@ -195,7 +200,10 @@ func buildConfig(opts FunctionOpts, triggers []Trigger) FunctionConfig {
 		Singleton:   opts.Singleton,
 	}
 	if opts.Timeouts != nil {
-		c.Timeouts = &timeoutsJSON{Step: core.DurationPtr(&opts.Timeouts.Step)}
+		c.Timeouts = &timeoutsJSON{
+			Step:   core.DurationPtr(&opts.Timeouts.Step),
+			Finish: core.DurationPtr(&opts.Timeouts.Finish),
+		}
 	}
 	for _, co := range opts.CancelOn {
 		c.CancelOn = append(c.CancelOn, cancelOnJSON{

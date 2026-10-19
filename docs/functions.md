@@ -416,6 +416,15 @@ limits how long one call to your app may take. The default is 5 minutes. Any val
 call that takes longer fails with `TimeoutError` and is retried like any other
 error. For longer work, split it into several steps.
 
+**Run timeout.** `timeouts: { finish: "15m" }` (Go: `Timeouts: &flow.Timeouts{Finish: 15 * time.Minute}`)
+limits how long the whole run may take, counted from its first call to your app. Time
+before that call (queued, scheduled, waiting for a concurrency slot) does not count;
+every wait after it does. A run still
+going then is **cancelled** with the error `FunctionTimeout`, and the engine sends
+`inngest/function.cancelled`. A step that is running finishes, but its result is
+dropped. There is no limit by default. A paused run is not cancelled while paused, but
+paused time still counts: it is cancelled as soon as you resume it.
+
 In Go, a panic inside a `step.Run` callback counts as a failed attempt, named
 `Panic`.
 
@@ -510,6 +519,13 @@ The event's data has `function_id` (`<appId>-<functionId>`), `run_id`, `error`
 It runs only when a run ends `failed`, never when it is `cancelled`. Runs started
 by `step.invoke` count too.
 
+To act when a run is **cancelled**, trigger a function on `inngest/function.cancelled`
+the same way (same data; `error` is there when the cancel had a reason, such as
+`FunctionTimeout`). Needs an engine that sends it. A run is sent at most once per
+event: a run cancelled again after a retry does not start the handler again. A run
+started by `inngest/function.failed` or `inngest/function.cancelled` sends neither
+event, so a handler can not start itself.
+
 ## Expressions
 
 `if`, `key` and a few other options take a small expression. The variables are
@@ -555,6 +571,7 @@ Good to know:
 | `name` | `Name` | A name for the dashboard. |
 | `retries` | `Retries` | Retries per step. Default 4, max 20. |
 | `timeouts.step` | `Timeouts.Step` | Longest one call to your app may take. |
+| `timeouts.finish` | `Timeouts.Finish` | Longest the whole run may take; then it is cancelled. |
 | `cancelOn` | `CancelOn` | [Cancel on an event](#cancel-a-run-with-an-event). |
 | `onFailure` | (a second function) | [Runs when it fails for good](#when-a-function-fails-for-good). |
 | `concurrency` | `Concurrency` | [Limit runs at once](flow-control.md#concurrency). |

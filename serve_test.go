@@ -738,7 +738,7 @@ func testFunctions(t *testing.T, c *Client) {
 		ID:          "charge",
 		Name:        "Charge",
 		Retries:     IntPtr(4),
-		Timeouts:    &Timeouts{Step: 30 * time.Second},
+		Timeouts:    &Timeouts{Step: 30 * time.Second, Finish: 15 * time.Minute},
 		CancelOn:    []CancelOn{{Event: "billing/cancel", Match: StrPtr("data.id"), Timeout: 7 * 24 * time.Hour}},
 		Concurrency: []Concurrency{{Limit: 10, Key: StrPtr("event.data.accountId")}},
 		Throttle:    &Throttle{Limit: 5, Period: time.Minute, Burst: 2},
@@ -764,7 +764,7 @@ func testFunctions(t *testing.T, c *Client) {
 }
 
 const wantFunctions = `[{"id":"charge","name":"Charge","triggers":[{"event":"billing/charge","if":"event.data.amount != 0"}],` +
-	`"retries":4,"timeouts":{"step":"30s"},"cancelOn":[{"event":"billing/cancel","match":"data.id","timeout":"604800s"}],` +
+	`"retries":4,"timeouts":{"step":"30s","finish":"900s"},"cancelOn":[{"event":"billing/cancel","match":"data.id","timeout":"604800s"}],` +
 	`"concurrency":[{"limit":10,"key":"event.data.accountId"}],"throttle":{"limit":5,"period":"60s","burst":2},` +
 	`"rateLimit":{"limit":100,"period":"3600s","key":"event.data.id"},"debounce":{"period":"1500ms","timeout":"300s"},` +
 	`"priority":{"run":"event.data.boost"},"idempotency":"event.data.id","singleton":{"mode":"skip"}},` +
