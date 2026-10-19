@@ -1,7 +1,7 @@
 import { defineConfig } from "tsup";
 
 // Builds the npm package into dist/. @clevix/protocol is private, so its code and
-// types are bundled in. hono and express stay external (optional peer deps).
+// types are bundled in. hono, express and react stay external (optional peer deps).
 export default defineConfig({
   entry: {
     index: "src/index.ts",
@@ -9,6 +9,8 @@ export default defineConfig({
     express: "src/express.ts",
     hono: "src/hono.ts",
     next: "src/next.ts",
+    realtime: "src/realtime.ts",
+    react: "src/react.ts",
   },
   format: ["esm"],
   target: "es2023",
@@ -22,7 +24,7 @@ export default defineConfig({
     },
   },
   noExternal: ["@clevix/protocol"],
-  external: ["hono", "express", /^node:/],
+  external: ["hono", "express", "react", /^node:/],
   clean: true,
   sourcemap: true,
 });

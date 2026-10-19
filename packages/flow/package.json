@@ -14,7 +14,9 @@
     "./cloudflare": "./src/cloudflare.ts",
     "./express": "./src/express.ts",
     "./hono": "./src/hono.ts",
-    "./next": "./src/next.ts"
+    "./next": "./src/next.ts",
+    "./realtime": "./src/realtime.ts",
+    "./react": "./src/react.ts"
   },
   "files": [
     "dist",
@@ -46,6 +48,14 @@
       "./next": {
         "types": "./dist/next.d.ts",
         "default": "./dist/next.js"
+      },
+      "./realtime": {
+        "types": "./dist/realtime.d.ts",
+        "default": "./dist/realtime.js"
+      },
+      "./react": {
+        "types": "./dist/react.d.ts",
+        "default": "./dist/react.js"
       }
     }
   },
@@ -57,7 +67,8 @@
   },
   "peerDependencies": {
     "express": "^5.0.0",
-    "hono": "^4.0.0"
+    "hono": "^4.0.0",
+    "react": ">=18.0.0"
   },
   "peerDependenciesMeta": {
     "express": {
@@ -65,14 +76,19 @@
     },
     "hono": {
       "optional": true
+    },
+    "react": {
+      "optional": true
     }
   },
   "devDependencies": {
     "@clevix/protocol": "workspace:*",
     "@types/express": "5.0.6",
     "@types/node": "24.9.1",
+    "@types/react": "19.1.12",
     "express": "5.3.0",
     "hono": "4.13.13",
+    "react": "19.1.1",
     "tsup": "8.5.1",
     "typescript": "6.0.3",
     "vitest": "4.1.12"

@@ -26,6 +26,7 @@ add your app, your first function, deploy, connect, and your first event.
 | [Events](docs/events.md) | What an event holds, sending from apps, functions and HTTP, sending once, delayed runs |
 | [Scheduling](docs/scheduling.md) | Cron triggers and time zones, sleeps, runs at a set time |
 | [Flow control](docs/flow-control.md) | Concurrency, throttle, rate limit, debounce, batching, priority, idempotency, singleton |
+| [Realtime](docs/realtime.md) | Live messages from functions to the browser: publish, tokens, subscribe, the React hook |
 | [Production](docs/production.md) | Syncing in CI, key rotation, the dashboard, limits, troubleshooting |
 | [TypeScript reference](docs/typescript.md) | Install, framework adapters (Workers, Hono, Next.js, Express), settings |
 | [Go reference](docs/go.md) | Install, the API, Go-specific notes |
