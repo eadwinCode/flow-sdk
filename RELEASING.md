@@ -14,8 +14,8 @@ One version number covers everything: the Go module, `@clevix/flow` and
 3. Tag `main` and push the tag:
 
    ```bash
-   git tag v0.1.1
-   git push origin v0.1.1
+   git tag v0.2.0
+   git push origin v0.2.0
    ```
 
 The tag starts `.github/workflows/release.yml`. It runs the checks, checks that
@@ -26,11 +26,11 @@ reads the tag.
 To build the files without releasing:
 
 ```bash
-scripts/release.sh 0.1.1 /tmp/release
+scripts/release.sh 0.2.0 /tmp/release
 ```
 
 If the workflow fails before the release is made, delete the tag
-(`git push origin :refs/tags/v0.1.1`), fix the problem, and tag again. Once a
+(`git push origin :refs/tags/v0.2.0`), fix the problem, and tag again. Once a
 release is out, never move or delete its tag: the Go proxy has cached it and apps
 may pin it. Ship the fix as a new version.
 
