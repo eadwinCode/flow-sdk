@@ -1,0 +1,80 @@
+{
+  "name": "@clevix/flow",
+  "version": "0.1.1",
+  "private": true,
+  "description": "TypeScript SDK for clevix-worker: durable functions made of steps.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/eadwinCode/flow-sdk.git",
+    "directory": "packages/flow"
+  },
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./cloudflare": "./src/cloudflare.ts",
+    "./express": "./src/express.ts",
+    "./hono": "./src/hono.ts",
+    "./next": "./src/next.ts"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "sideEffects": false,
+  "engines": {
+    "node": ">=20"
+  },
+  "publishConfig": {
+    "types": "./dist/index.d.ts",
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "./cloudflare": {
+        "types": "./dist/cloudflare.d.ts",
+        "default": "./dist/cloudflare.js"
+      },
+      "./express": {
+        "types": "./dist/express.d.ts",
+        "default": "./dist/express.js"
+      },
+      "./hono": {
+        "types": "./dist/hono.d.ts",
+        "default": "./dist/hono.js"
+      },
+      "./next": {
+        "types": "./dist/next.d.ts",
+        "default": "./dist/next.js"
+      }
+    }
+  },
+  "scripts": {
+    "build": "tsup",
+    "prepack": "pnpm build",
+    "typecheck": "tsc -p .",
+    "test": "vitest run"
+  },
+  "peerDependencies": {
+    "express": "^5.0.0",
+    "hono": "^4.0.0"
+  },
+  "peerDependenciesMeta": {
+    "express": {
+      "optional": true
+    },
+    "hono": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@clevix/protocol": "workspace:*",
+    "@types/express": "5.0.6",
+    "@types/node": "24.9.1",
+    "express": "5.3.0",
+    "hono": "4.13.13",
+    "tsup": "8.5.1",
+    "typescript": "6.0.3",
+    "vitest": "4.1.12"
+  }
+}

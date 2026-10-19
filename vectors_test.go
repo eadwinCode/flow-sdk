@@ -2,8 +2,6 @@ package flow
 
 import (
 	"encoding/json"
-	"errors"
-	"io/fs"
 	"os"
 	"testing"
 	"time"
@@ -36,12 +34,7 @@ type vectors struct {
 
 func loadVectors(t *testing.T) vectors {
 	t.Helper()
-	// In the monorepo the vectors sit next to this module. The public flow-sdk
-	// repo gets a copy in testdata/ at release time.
-	b, err := os.ReadFile("../conformance/vectors.json")
-	if errors.Is(err, fs.ErrNotExist) {
-		b, err = os.ReadFile("testdata/vectors.json")
-	}
+	b, err := os.ReadFile("testdata/vectors.json")
 	if err != nil {
 		t.Fatalf("read vectors: %v", err)
 	}

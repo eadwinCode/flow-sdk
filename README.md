@@ -124,4 +124,27 @@ Both SDKs share one version number. Each release has a git tag `vX.Y.Z` (used by
 Go) and a GitHub release with the TypeScript `.tgz`. To hear about new versions,
 use Watch → Custom → Releases on this repo.
 
-This repo holds the released code only. Each release updates it.
+## What is in this repo
+
+| Path | What |
+| --- | --- |
+| `*.go`, `step/`, `group/`, `internal/` | The Go SDK (module `github.com/eadwinCode/flow-sdk`) |
+| `packages/flow` | The TypeScript SDK, `@clevix/flow` |
+| `packages/protocol` | `@clevix/protocol`: wire types, signing, IDs and durations. Shared with the engine; `@clevix/flow` bundles it |
+| `testdata/vectors.json` | Test vectors both SDKs must match |
+| `docs/` | The [Go](docs/go.md), [TypeScript](docs/typescript.md) and [protocol](docs/protocol.md) guides |
+
+## Develop
+
+Needs Go 1.27+, Node 22+ and pnpm 9.
+
+```bash
+pnpm install
+pnpm typecheck
+pnpm test
+go test ./...
+```
+
+The engine pins a release of this repo. When a change needs the engine too (for
+example a protocol change), see "Working with the engine" in
+[RELEASING.md](RELEASING.md).
