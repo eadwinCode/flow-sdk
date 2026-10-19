@@ -73,16 +73,20 @@ export function subscribe<T = unknown>(options: SubscribeOptions<T>): () => void
   const open = async () => {
     if (stopped) return;
     setState("connecting");
-    let token: RealtimeToken;
+    let socket: WebSocket;
     try {
-      token = await options.refreshToken();
+      const token = await options.refreshToken();
+      if (stopped) return;
+      if (!token || typeof token.url !== "string" || typeof token.token !== "string") {
+        throw new Error("refreshToken did not return a token (check that your token route answered 200)");
+      }
+      // The constructor throws on a bad URL; that must not end the reconnect loop.
+      socket = new Socket(`${token.url}?token=${encodeURIComponent(token.token)}`);
     } catch (err) {
       setState("error", err instanceof Error ? err : new Error(String(err)));
       later(false);
       return;
     }
-    if (stopped) return;
-    const socket = new Socket(`${token.url}?token=${encodeURIComponent(token.token)}`);
     ws = socket;
     socket.onopen = () => {
       failures = 0;

@@ -1,6 +1,6 @@
 // React hook for realtime: `@clevix/flow/react`. React is an optional peer dependency.
 //
-//   const { latest, messages, state, error } = useRealtime({ enabled, refreshToken });
+//   const { latest, messages, state, error } = useRealtime({ channel, enabled, refreshToken });
 
 import { useEffect, useRef, useState } from "react";
 import { subscribe, type RealtimeMessage, type RealtimeState, type RealtimeToken } from "./realtime.ts";
@@ -10,6 +10,12 @@ export type { RealtimeMessage, RealtimeState, RealtimeToken } from "./realtime.t
 export interface UseRealtimeOptions {
   /** Gets a new token from your server. Called before every connect. */
   refreshToken: () => Promise<RealtimeToken>;
+  /**
+   * What the token is for, e.g. the channel name. When it changes, the hook drops its
+   * messages and connects again with a new token. A new `refreshToken` function alone
+   * does not reconnect.
+   */
+  channel?: string;
   /** False closes the socket. Default true. */
   enabled?: boolean;
   /** How many messages `messages` keeps (newest last). Default 100. */
@@ -24,7 +30,7 @@ export interface UseRealtimeResult<T> {
 }
 
 export function useRealtime<T = unknown>(options: UseRealtimeOptions): UseRealtimeResult<T> {
-  const { enabled = true, bufferSize = 100 } = options;
+  const { enabled = true, bufferSize = 100, channel } = options;
   const [messages, setMessages] = useState<RealtimeMessage<T>[]>([]);
   const [state, setState] = useState<RealtimeState | "idle">("idle");
   const [error, setError] = useState<Error | undefined>(undefined);
@@ -33,6 +39,9 @@ export function useRealtime<T = unknown>(options: UseRealtimeOptions): UseRealti
   refresh.current = options.refreshToken;
 
   useEffect(() => {
+    // A new session: messages from the last one (another channel, or before a pause) go.
+    setMessages([]);
+    setError(undefined);
     if (!enabled) {
       setState("idle");
       return;
@@ -47,7 +56,7 @@ export function useRealtime<T = unknown>(options: UseRealtimeOptions): UseRealti
       },
     });
     return stop;
-  }, [enabled, bufferSize]);
+  }, [enabled, bufferSize, channel]);
 
   return { latest: messages[messages.length - 1], messages, state, error };
 }

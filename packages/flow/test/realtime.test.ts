@@ -163,6 +163,45 @@ describe("subscribe (browser)", () => {
     expect(FakeSocket.all[0]!.sent).toEqual(["ping"]);
   });
 
+  it("keeps trying when the token route gives back something that is not a token", async () => {
+    vi.useFakeTimers();
+    const states: string[] = [];
+    const refreshToken = vi.fn(async () => ({ error: "forbidden" }) as unknown as RealtimeToken);
+    subscribe({
+      refreshToken,
+      onMessage: () => {},
+      onState: (s) => states.push(s),
+      WebSocket: FakeSocket as unknown as typeof WebSocket,
+    });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(states).toEqual(["connecting", "error"]);
+    expect(FakeSocket.all).toHaveLength(0);
+    await vi.advanceTimersByTimeAsync(1_100);
+    expect(refreshToken).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps trying when the WebSocket constructor throws", async () => {
+    vi.useFakeTimers();
+    let calls = 0;
+    class Throwing {
+      constructor() {
+        calls += 1;
+        throw new SyntaxError("Invalid URL");
+      }
+    }
+    const states: string[] = [];
+    subscribe({
+      refreshToken: async () => ({ token: "t", url: "bad url", channel: "c", topics: ["t"], expiresAt: 0 }),
+      onMessage: () => {},
+      onState: (s) => states.push(s),
+      WebSocket: Throwing as unknown as typeof WebSocket,
+    });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(states).toEqual(["connecting", "error"]);
+    await vi.advanceTimersByTimeAsync(1_100);
+    expect(calls).toBe(2);
+  });
+
   it("stop closes the socket and does not connect again", async () => {
     const { stop, refreshToken } = start();
     await flushPromises();

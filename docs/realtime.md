@@ -32,11 +32,14 @@ TypeScript:
 ```ts
 flow.createFunction({ id: "build-site" }, { event: "site/build" }, async ({ event, step }) => {
   const channel = `deployment:${event.data.id}`;
+  // A failed publish must not fail the step or the run: log it and go on.
+  const progress = (data: { pct: number; label: string }) =>
+    flow.realtime.publish({ channel, topic: "progress", data }).catch((err) => console.warn("realtime", err));
   await step.run("render", async () => {
-    await flow.realtime.publish({ channel, topic: "progress", data: { pct: 10, label: "Rendering" } });
+    await progress({ pct: 10, label: "Rendering" });
     return render();
   });
-  await flow.realtime.publish({ channel, topic: "progress", data: { pct: 100, label: "Done" } });
+  await progress({ pct: 100, label: "Done" }); // after the last step: sent once
 });
 ```
 
@@ -92,6 +95,7 @@ React:
 import { useRealtime } from "@clevix/flow/react";
 
 const { latest, messages, state, error } = useRealtime<Progress>({
+  channel: `deployment:${id}`, // a new id: drop the old messages and connect again
   enabled: isBuilding,
   refreshToken: () => fetch(`/api/deployments/${id}/realtime-token`).then((r) => r.json()),
 });
@@ -101,7 +105,12 @@ const { latest, messages, state, error } = useRealtime<Progress>({
 client connects again after a dropped connection (waiting 1 s, then longer, up to
 30 s) and sends a ping every 30 s. `useRealtime` keeps the last 100 messages
 (`bufferSize`), and closes the socket when `enabled` is false or the component goes
-away.
+away. Pass `channel`: when it changes, the hook drops its messages and connects again
+with a new token. Turning `enabled` off and on also starts with no messages.
+
+Your token route must answer 200 with the token. Check `r.ok` in `refreshToken` if
+you want a clear error; if it gives back something that is not a token, the client
+reports an `error` state and tries again later.
 
 ## What to expect
 
@@ -109,10 +118,14 @@ away.
   Nothing is stored, and a browser that connects later does not get older messages.
   Keep the real state in your app, and let the page read it (for example on load, or
   every few seconds as a fallback).
-- **A retried step publishes again.** `publish` is a plain call, not a step. A
-  finished step never runs again, but if a step publishes and then fails, its retry
-  sends the message again. Fine for progress; do not use messages for things that
-  must happen once.
+- **A publish can be sent more than once.** `publish` is a plain call, not a step.
+  Your function runs from the top on every call from the engine (finished steps come
+  back from memory), so:
+  - inside a step, it is sent again only when that step is retried;
+  - **outside** a step, it is sent again on every later call. A publish before three
+    steps goes out four times. Put it inside a step, or after the last step.
+
+  Fine for progress; do not use messages for things that must happen once.
 - **Do not put secrets in messages.** Anyone with a token for the channel sees every
   message on its topics.
 - **Publishing should not fail your run.** In Go, log the error and go on. In
