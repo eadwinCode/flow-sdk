@@ -228,7 +228,6 @@ type GenericEvent[T any] struct {
 
 // InputCtx says which run and attempt this is.
 type InputCtx struct {
-	Env        string
 	FunctionID string
 	RunID      string
 	// Attempt counts from 0.
@@ -306,7 +305,7 @@ func CreateFunction[T any](c *Client, opts FunctionOpts, trigger Triggerable, ha
 			input.Events = append(input.Events, e)
 		}
 		input.InputCtx = InputCtx{
-			Env: req.Env, FunctionID: fn.FullyQualifiedID(), RunID: req.RunID,
+			FunctionID: fn.FullyQualifiedID(), RunID: req.RunID,
 			Attempt: req.Attempt, MaxAttempts: req.MaxAttempts,
 		}
 		return handler(ctx, input)

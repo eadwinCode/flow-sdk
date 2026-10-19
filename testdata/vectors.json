@@ -48,16 +48,16 @@
     ]
   },
   "signatures": {
-    "rule": "X-Inngest-Signature = t=<unix seconds>&s=<hex HMAC-SHA256(key, body + t)>, where key is the signing key with the `signkey-<env>-` prefix removed, used as UTF-8 text (the 64 hex chars, not decoded bytes). Reject if |now - t| > 300 s. Check the current key and the fallback key.",
+    "rule": "X-Inngest-Signature = t=<unix seconds>&s=<hex HMAC-SHA256(key, body + t)>, where key is the signing key with the `signkey-` prefix removed, used as UTF-8 text (the 64 hex chars, not decoded bytes). Reject if |now - t| > 300 s. Check the current key and the fallback key.",
     "cases": [
       {
-        "signingKey": "signkey-test-abababababababababababababababababababababababababababababababab",
+        "signingKey": "signkey-abababababababababababababababababababababababababababababababab",
         "body": "{\"fnId\":\"hello\",\"runId\":\"run_1\"}",
         "t": 1760000000,
         "header": "t=1760000000&s=fc187d386c184cafe44c38114d107c0276758c2a08670e513345473be51d1c74"
       },
       {
-        "signingKey": "signkey-test-abababababababababababababababababababababababababababababababab",
+        "signingKey": "signkey-abababababababababababababababababababababababababababababababab",
         "body": "",
         "t": 1760000300,
         "header": "t=1760000300&s=885a42fd26d29636a0877f8037019723b2e31e7ab98317b1ab59747d3f0af9f1"
@@ -65,8 +65,8 @@
     ]
   },
   "bearer": {
-    "rule": "App -> engine Authorization: Bearer signkey-<env>-<hex SHA-256 of the secret's DECODED bytes (hex-decoded)>.",
-    "signingKey": "signkey-test-abababababababababababababababababababababababababababababababab",
-    "bearer": "signkey-test-9a2db2e23f1504cd056606553ac049c5e718e8f9ce9233876df1a7a1821af885"
+    "rule": "App -> engine Authorization: Bearer signkey-<hex SHA-256 of the secret's DECODED bytes (hex-decoded)>.",
+    "signingKey": "signkey-abababababababababababababababababababababababababababababababab",
+    "bearer": "signkey-9a2db2e23f1504cd056606553ac049c5e718e8f9ce9233876df1a7a1821af885"
   }
 }

@@ -80,7 +80,7 @@ Take the `.tgz` link from the newest
 [release](https://github.com/eadwinCode/flow-sdk/releases):
 
 ```bash
-npm install https://github.com/eadwinCode/flow-sdk/releases/download/v0.1.0/clevix-flow-0.1.0.tgz
+npm install https://github.com/eadwinCode/flow-sdk/releases/download/v0.2.0/clevix-flow-0.2.0.tgz
 ```
 
 ```ts

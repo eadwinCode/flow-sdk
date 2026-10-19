@@ -15,20 +15,20 @@ import (
 // Signing follows packages/protocol/src/signing.ts.
 //
 // Engine -> app: X-Inngest-Signature: t=<unix seconds>&s=<hex HMAC-SHA256(secret, body + t)>,
-// where secret is the key without its "signkey-<env>-" prefix, used as text.
-// App -> engine: Authorization: Bearer signkey-<env>-<hex SHA-256 of the hex-decoded secret>.
+// where secret is the key without its "signkey-" prefix, used as text.
+// App -> engine: Authorization: Bearer signkey-<hex SHA-256 of the hex-decoded secret>.
 
 // signatureTolerance is how old (or new) a signature may be.
 const signatureTolerance = 300 * time.Second
 
-var signingKeyRE = regexp.MustCompile(`^signkey-([a-z0-9]+)-([0-9a-f]{64})$`)
+var signingKeyRE = regexp.MustCompile(`^signkey-([0-9a-f]{64})$`)
 
-func parseSigningKey(key string) (env, secret string, err error) {
+func parseSigningKey(key string) (secret string, err error) {
 	m := signingKeyRE.FindStringSubmatch(key)
 	if m == nil {
-		return "", "", errors.New("flow: invalid signing key format (want signkey-<env>-<64 hex>)")
+		return "", errors.New("flow: invalid signing key format (want signkey-<64 hex>)")
 	}
-	return m[1], m[2], nil
+	return m[1], nil
 }
 
 func hmacHex(secret, message string) string {
@@ -39,7 +39,7 @@ func hmacHex(secret, message string) string {
 
 // signRequest returns the signature header value for body at time now.
 func signRequest(signingKey string, body []byte, now time.Time) (string, error) {
-	_, secret, err := parseSigningKey(signingKey)
+	secret, err := parseSigningKey(signingKey)
 	if err != nil {
 		return "", err
 	}
@@ -82,7 +82,7 @@ func verifySignature(header string, body []byte, keys []string, now time.Time) b
 		if key == "" {
 			continue
 		}
-		_, secret, err := parseSigningKey(key)
+		secret, err := parseSigningKey(key)
 		if err != nil {
 			continue
 		}
@@ -96,7 +96,7 @@ func verifySignature(header string, body []byte, keys []string, now time.Time) b
 
 // signingKeyBearer is the bearer token the app sends to the engine.
 func signingKeyBearer(signingKey string) (string, error) {
-	env, secret, err := parseSigningKey(signingKey)
+	secret, err := parseSigningKey(signingKey)
 	if err != nil {
 		return "", err
 	}
@@ -105,5 +105,5 @@ func signingKeyBearer(signingKey string) (string, error) {
 		return "", err
 	}
 	sum := sha256.Sum256(raw)
-	return "signkey-" + env + "-" + hex.EncodeToString(sum[:]), nil
+	return "signkey-" + hex.EncodeToString(sum[:]), nil
 }

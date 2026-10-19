@@ -14,7 +14,7 @@ engine.
 
 | Variable | Use |
 | --- | --- |
-| `FLOW_SIGNING_KEY` | `signkey-<env>-<64 hex>`. Checks calls from the engine, and signs sync. Required unless dev mode. |
+| `FLOW_SIGNING_KEY` | `signkey-<64 hex>`. Checks calls from the engine, and signs sync. Required unless dev mode. |
 | `FLOW_SIGNING_KEY_FALLBACK` | Old key while rotating. Calls signed with either key are accepted. |
 | `FLOW_EVENT_KEY` | Event key, for sending events. |
 | `FLOW_BASE_URL` | Engine URL, for example `https://worker.clevixstudio.com`. |
@@ -36,7 +36,7 @@ An app serves one URL (for example `/api/flow`):
 ### Signature check (POST and GET)
 
 Header `X-Inngest-Signature: t=<unix seconds>&s=<hex>`. `s` is HMAC-SHA256 with the
-signing key minus its `signkey-<env>-` prefix, used as UTF-8 text, over
+signing key minus its `signkey-` prefix, used as UTF-8 text, over
 `rawBody + t`. Reject (401, function does not run) if the header is missing, if
 `|now - t| > 300`, or if neither the key nor the fallback matches. Compare in constant
 time. Check the raw bytes as received, before parsing JSON.
@@ -44,7 +44,7 @@ time. Check the raw bytes as received, before parsing JSON.
 ### Sync
 
 `PUT {FLOW_BASE_URL}/apps/{appId}/sync` with
-`Authorization: Bearer signkey-<env>-<hex sha256 of the secret's hex-decoded bytes>`
+`Authorization: Bearer signkey-<hex sha256 of the secret's hex-decoded bytes>`
 and an `AppManifest` body:
 
 ```json
@@ -62,7 +62,7 @@ and an `AppManifest` body:
   `timeouts: { step }`, `cancelOn`, `concurrency`, `throttle`, `rateLimit`,
   `debounce`, `batchEvents`, `priority`, `idempotency`, `singleton`. Durations are
   strings like `"30s"`, `"5m"`, `"7d"` or milliseconds as a number.
-- The engine answers 200 `{ ok, env, created, modified, archived, ... }`, or 400/401
+- The engine answers 200 `{ ok, created, modified, archived, ... }`, or 400/401
   with `{ error, status }`. Functions left out of the manifest are archived.
 
 `onFailure` (TypeScript only, in the config) becomes a second function in the
@@ -76,7 +76,7 @@ Its handler gets `{ event, error, step }`, where `error` is `event.data.error` a
 The body is an `InvokeRequest`:
 
 ```ts
-{ fnId, runId, env, event, events, memo, attempt, maxAttempts, targetStepId? }
+{ fnId, runId, event, events, memo, attempt, maxAttempts, targetStepId? }
 ```
 
 - `fnId` is the function's ID **without** the app prefix (`charge`, not `billing-charge`).
@@ -105,20 +105,20 @@ always sent. Before running the function, the SDK loads the state page by page:
 ```
 GET {FLOW_BASE_URL}/runs/{runId}/state            first page
 GET {FLOW_BASE_URL}/runs/{runId}/state?cursor=... next pages
-Authorization: Bearer signkey-<env>-<hex sha256 of the secret's bytes>   (same as sync)
+Authorization: Bearer signkey-<hex sha256 of the secret's bytes>   (same as sync)
 ```
 
 Each answer is a `RunStatePage`: `{ events?, memo, next }`. `events` (the batch) is
 only on the first page. Merge each page's `memo` into one map, and stop when `next` is
 null. Then run as usual with that memo and those events.
 
-- 401: bad key. 404: no such run in the key's environment. Treat any failure (status
+- 401: bad key. 404: no such run. Treat any failure (status
   not 200, bad JSON, network error) as an error outside a step: answer 500 so the
   engine retries the call. Do not run the function with a partial memo.
 - Pages are about 4 MiB each, so a 32 MiB state is about 8 pages.
 - Use the current signing key for the bearer (not the fallback).
-- The key covers the whole environment: it can read every run in it, not only this
-  app's (see "Keys and signing" in architecture.md).
+- The key covers the whole engine: it can read every run, not only this app's (see
+  "Keys and signing" in architecture.md).
 
 ### Step IDs
 

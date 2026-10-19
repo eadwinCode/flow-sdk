@@ -13,13 +13,16 @@ import {
 } from "../src/index.ts";
 
 describe("signing", () => {
-  const key = generateSigningKey("prod");
+  const key = generateSigningKey();
   const body = JSON.stringify({ fnId: "f", runId: "r" });
   const now = 1_800_000_000;
 
   it("parses the key format", () => {
-    expect(parseSigningKey(key).env).toBe("prod");
-    expect(() => parseSigningKey("signkey-prod-short")).toThrow();
+    expect(key).toMatch(/^signkey-[0-9a-f]{64}$/);
+    expect(parseSigningKey(key).secret).toHaveLength(64);
+    expect(() => parseSigningKey("signkey-short")).toThrow();
+    // The old format with an env name is no longer valid.
+    expect(() => parseSigningKey(`signkey-prod-${"a".repeat(64)}`)).toThrow();
   });
 
   it("accepts a valid signature", async () => {
@@ -36,7 +39,7 @@ describe("signing", () => {
 
   it("rejects the wrong key", async () => {
     const header = await signRequest(key, body, now);
-    const other = generateSigningKey("prod");
+    const other = generateSigningKey();
     expect(await verifySignature({ header, body, keys: [other], nowSec: now })).toBe(false);
   });
 
@@ -47,7 +50,7 @@ describe("signing", () => {
   });
 
   it("accepts the fallback key during rotation", async () => {
-    const newKey = generateSigningKey("prod");
+    const newKey = generateSigningKey();
     const header = await signRequest(key, body, now);
     expect(
       await verifySignature({ header, body, keys: [newKey, key], nowSec: now }),
@@ -64,7 +67,8 @@ describe("signing", () => {
     const bearer = await signingKeyBearer(key);
     expect(bearer).toBe(await signingKeyBearer(key));
     expect(bearer).not.toContain(parseSigningKey(key).secret);
-    expect(parseBearer(bearer)?.env).toBe("prod");
+    expect(bearer).toMatch(/^signkey-[0-9a-f]{64}$/);
+    expect(parseBearer(bearer)?.hash).toBe(bearer.slice("signkey-".length));
     expect(parseBearer("nope")).toBeNull();
   });
 });

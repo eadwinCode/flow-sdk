@@ -1,21 +1,21 @@
 // Keys and request signing, following Inngest's scheme (see docs/architecture.md,
 // "Keys and signing"). Uses WebCrypto only, so it runs in Workers, Node and browsers.
 //
-// Signing key format: `signkey-<env>-<64 hex chars>`.
+// Signing key format: `signkey-<64 hex chars>`.
 // Engine -> app:  X-Inngest-Signature: t=<unix seconds>&s=<hex HMAC-SHA256(secret, body + t)>
-// App -> engine:  Authorization: Bearer signkey-<env>-<hex sha256(secret bytes)>
+// App -> engine:  Authorization: Bearer signkey-<hex sha256(secret bytes)>
 
 const encoder = new TextEncoder();
 
-const SIGNING_KEY_RE = /^signkey-([a-z0-9]+)-([0-9a-f]{64})$/;
-const BEARER_RE = /^signkey-([a-z0-9]+)-([0-9a-f]{64})$/;
+const SIGNING_KEY_RE = /^signkey-([0-9a-f]{64})$/;
+const BEARER_RE = /^signkey-([0-9a-f]{64})$/;
 
 export const SIGNATURE_TOLERANCE_SEC = 300;
 
-export function parseSigningKey(key: string): { env: string; secret: string } {
+export function parseSigningKey(key: string): { secret: string } {
   const m = SIGNING_KEY_RE.exec(key);
   if (!m) throw new Error("invalid signing key format");
-  return { env: m[1]!, secret: m[2]! };
+  return { secret: m[1]! };
 }
 
 export function toHex(bytes: ArrayBuffer | Uint8Array): string {
@@ -60,9 +60,8 @@ function randomHex(bytes: number): string {
   return toHex(crypto.getRandomValues(new Uint8Array(bytes)));
 }
 
-export function generateSigningKey(env: string): string {
-  if (!/^[a-z0-9]+$/.test(env)) throw new Error("env must be lowercase letters and digits");
-  return `signkey-${env}-${randomHex(32)}`;
+export function generateSigningKey(): string {
+  return `signkey-${randomHex(32)}`;
 }
 
 export function generateEventKey(): string {
@@ -109,16 +108,16 @@ export async function verifySignature(opts: {
   return ok;
 }
 
-/** The bearer token an app sends to the engine: the key's env plus a hash of its secret. */
+/** The bearer token an app sends to the engine: a hash of the key's secret, never the key. */
 export async function signingKeyBearer(signingKey: string): Promise<string> {
-  const { env, secret } = parseSigningKey(signingKey);
-  return `signkey-${env}-${await sha256Hex(fromHex(secret))}`;
+  const { secret } = parseSigningKey(signingKey);
+  return `signkey-${await sha256Hex(fromHex(secret))}`;
 }
 
-/** Splits a bearer token into env and hash, or returns null if it is not one. */
-export function parseBearer(token: string): { env: string; hash: string } | null {
+/** The hash in a bearer token, or null if it is not one. */
+export function parseBearer(token: string): { hash: string } | null {
   const m = BEARER_RE.exec(token);
-  return m ? { env: m[1]!, hash: m[2]! } : null;
+  return m ? { hash: m[1]! } : null;
 }
 
 /** Hash stored for an event key. */
