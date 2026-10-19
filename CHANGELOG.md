@@ -7,7 +7,11 @@
   with `flow.realtime.token()` / `client.Realtime().Token()`, and in the browser
   `subscribe()` from `@clevix/flow/realtime` or the `useRealtime()` hook from
   `@clevix/flow/react` (React is an optional peer dependency). See
-  [docs/realtime.md](docs/realtime.md). Needs an engine with realtime.
+  [docs/realtime.md](docs/realtime.md). Needs an engine with realtime
+  (eadwinCode/clevix-worker#39) and its `REALTIME_TOKEN_SECRET` set.
+  A token holds **one open socket at a time**: get a new token for every connect
+  (`subscribe()` and `useRealtime()` do). Do not cache or share a token between
+  tabs; the second connect fails and keeps retrying.
 - **`timeouts.finish`** (Go: `Timeouts.Finish`): the longest a whole run may take,
   counted from its first step call. A run still going then is cancelled with
   `FunctionTimeout`. Needs an engine that has it; an older engine ignores it.

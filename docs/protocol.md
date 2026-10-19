@@ -193,8 +193,10 @@ key needs it).
 
 The browser opens a WebSocket to `<url>?token=<token>` within a minute
 (`expiresAt`). Each message from the engine is JSON text:
-`{ channel, topic, data, ts }`. A token holds one open socket at a time (a second
-connect gets `409`), so get a new token for every connect. The client may send `ping`; the engine answers
+`{ channel, topic, data, ts }`. A token holds one open socket at a time, so get a
+new token for every connect. The engine answers a second connect with the same token
+with `409`, but a browser WebSocket can not see that status: it only gets an error
+and a close (code `1006`). The client may send `ping`; the engine answers
 `pong`. The engine closes the socket with code `4001` after an hour; the client then
 gets a new token and connects again.
 
