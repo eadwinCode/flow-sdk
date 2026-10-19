@@ -179,6 +179,24 @@ Give users `"<runId>:<hashed step id>"` (same on every attempt) to pass to outsi
 one event or a list (up to 100): `{ name, data?, id?, ts?, user? }`. Names starting
 with `inngest/` are reserved. The answer is `{ ids: string[], status: 200 }`.
 
+## Realtime
+
+Both take `Authorization: Bearer <signing key bearer>` (as sync), and on a `401` the
+SDK tries the fallback key. `appId` is the app's ID; always send it (a shared legacy
+key needs it).
+
+- `POST {FLOW_BASE_URL}/v1/realtime/publish` with `{ appId, channel, topic, data }`.
+  The answer is `202 { ok: true }`. Body up to 64 KB (else `413`). Channel: 1-256 of
+  `A-Za-z0-9:_-.`; topic: 1-64 of `A-Za-z0-9_-.` (else `400`).
+- `POST {FLOW_BASE_URL}/v1/realtime/token` with `{ appId, channel, topics }` (1-10
+  topics). The answer is `{ token, url, channel, topics, expiresAt }`.
+
+The browser opens a WebSocket to `<url>?token=<token>` within a minute
+(`expiresAt`). Each message from the engine is JSON text:
+`{ channel, topic, data, ts }`. The client may send `ping`; the engine answers
+`pong`. The engine closes the socket with code `4001` after an hour; the client then
+gets a new token and connects again.
+
 ## Limits worth checking in the SDK
 
 - A step output over 4 MB fails the step (`OutputTooLarge`), so a clear error early helps.

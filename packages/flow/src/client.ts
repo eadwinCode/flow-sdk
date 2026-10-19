@@ -1,4 +1,5 @@
-import type { IncomingEvent } from "@clevix/protocol";
+import { signingKeyBearer, type IncomingEvent, type Json } from "@clevix/protocol";
+import type { RealtimeToken } from "./realtime.ts";
 import type { FlowFunction, FunctionOptions, Handler, Trigger } from "./types.ts";
 
 // The Flow client: app settings, createFunction and send.
@@ -76,6 +77,55 @@ export class Flow {
     };
   }
 
+  /**
+   * Live messages from functions to browsers. A message goes to the browsers
+   * connected right now; nothing is stored. A publish is a plain call, not a step,
+   * so a retried step publishes again: treat messages as hints.
+   */
+  get realtime(): FlowRealtime {
+    return {
+      publish: async ({ channel, topic, data }, options = {}) => {
+        const res = await this.postSigned("/v1/realtime/publish", { appId: this.id, channel, topic, data }, options.env);
+        if (!res.ok) throw new Error(`realtime publish failed (${res.status}): ${res.error}`);
+      },
+      token: async ({ channel, topics }, options = {}) => {
+        if (topics.length === 0) throw new Error("realtime token needs at least one topic");
+        const res = await this.postSigned("/v1/realtime/token", { appId: this.id, channel, topics }, options.env);
+        if (!res.ok) throw new Error(`realtime token failed (${res.status}): ${res.error}`);
+        return res.body as RealtimeToken;
+      },
+    };
+  }
+
+  /** POSTs JSON with the signing key as bearer; on a 401 it tries the fallback key. */
+  private async postSigned(
+    path: string,
+    payload: unknown,
+    env?: FlowEnv,
+  ): Promise<{ ok: boolean; status: number; body: unknown; error: string }> {
+    const s = this.settings(env);
+    const keys = [s.signingKey, s.signingKeyFallback].filter((k): k is string => !!k);
+    if (keys.length === 0) keys.push(""); // dev: no key; the engine answers 401
+    const body = JSON.stringify(payload);
+    let last = { ok: false, status: 0, body: null as unknown, error: "" };
+    for (const [i, key] of keys.entries()) {
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (key) headers.Authorization = `Bearer ${await signingKeyBearer(key)}`;
+      const response = await s.fetch(`${trimSlash(s.baseUrl)}${path}`, { method: "POST", headers, body });
+      const text = await response.text();
+      let parsed: unknown = null;
+      try {
+        parsed = JSON.parse(text);
+      } catch {
+        // not JSON
+      }
+      const error = parsed && typeof parsed === "object" && "error" in parsed ? String(parsed.error) : text;
+      last = { ok: response.ok, status: response.status, body: parsed, error };
+      if (response.status !== 401 || i === keys.length - 1) break;
+    }
+    return last;
+  }
+
   /** Defines a function. Pass the result to `serve`. */
   createFunction(options: FunctionOptions, trigger: Trigger | Trigger[], handler: Handler): FlowFunction {
     if (!ID_RE.test(options.id)) {
@@ -146,4 +196,16 @@ export class Flow {
 
 export function trimSlash(url: string): string {
   return url.replace(/\/+$/, "");
+}
+
+/** `flow.realtime`. On Workers, pass the handler's `env` if the keys live there. */
+export interface FlowRealtime {
+  /** Sends `data` (any JSON value, up to about 64 KB) to the browsers on `topic` of `channel`. */
+  publish(message: { channel: string; topic: string; data: Json }, options?: { env?: FlowEnv }): Promise<void>;
+  /**
+   * A token that lets one browser connect to `channel` and read `topics` (1 to 10).
+   * Call it in your own route, after you checked that the user may see that channel,
+   * and send the result to the browser as JSON.
+   */
+  token(request: { channel: string; topics: string[] }, options?: { env?: FlowEnv }): Promise<RealtimeToken>;
 }
