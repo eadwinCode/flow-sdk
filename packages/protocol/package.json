@@ -1,0 +1,41 @@
+{
+  "name": "@clevix/protocol",
+  "version": "0.1.0",
+  "private": true,
+  "description": "clevix-worker wire protocol: shared types, request signing, IDs and durations.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/eadwinCode/flow-sdk.git",
+    "directory": "packages/protocol"
+  },
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "sideEffects": false,
+  "publishConfig": {
+    "types": "./dist/index.d.ts",
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    }
+  },
+  "scripts": {
+    "build": "tsup",
+    "prepack": "pnpm build",
+    "typecheck": "tsc -p .",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@types/node": "24.9.1",
+    "tsup": "8.5.1",
+    "typescript": "6.0.3",
+    "vitest": "4.1.12"
+  }
+}
