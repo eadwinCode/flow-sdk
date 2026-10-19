@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # Builds the release files for one version.
 #
-#   scripts/release.sh 0.1.1 /tmp/release
+#   scripts/release.sh 0.2.0 /tmp/release
 #
 # Checks that every version number matches, then writes
-# /tmp/release/clevix-flow-0.1.1.tgz and /tmp/release/clevix-protocol-0.1.1.tgz.
+# /tmp/release/clevix-flow-0.2.0.tgz and /tmp/release/clevix-protocol-0.2.0.tgz.
 # It uploads nothing; .github/workflows/release.yml does that. See RELEASING.md.
 set -euo pipefail
 

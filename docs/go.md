@@ -21,7 +21,7 @@ import (
 )
 ```
 
-Pin a version with `@v0.1.0` in place of `@latest`. To upgrade, run `go get`
+Pin a version with `@v0.2.0` in place of `@latest`. To upgrade, run `go get`
 again with the new version, then `go mod tidy`. The versions are the
 [releases](https://github.com/eadwinCode/flow-sdk/releases).
 
@@ -106,6 +106,30 @@ Set these as environment variables, or in `flow.ClientOpts` (code wins).
 
 Without a signing key, and not in dev mode, `Serve()` answers every request
 with 500 `NoSigningKey`.
+
+Both keys come from the dashboard's Keys page. Each is shown once, when you
+make it. In code:
+
+```go
+client, err := flow.NewClient(flow.ClientOpts{
+	AppID:      "billing",
+	SigningKey: flow.StrPtr(os.Getenv("MY_SIGNING_KEY")), // any source you like
+	EventKey:   flow.StrPtr(os.Getenv("MY_EVENT_KEY")),
+	BaseURL:    flow.StrPtr("https://worker.clevixstudio.com"),
+	ServeURL:   flow.StrPtr("https://billing.example.com/api/flow"),
+})
+```
+
+Where each key is used:
+
+- The **signing key** is used by `client.Serve()` only: to check calls from
+  the engine, and to sign the sync on `PUT`. Keep it secret.
+- The **event key** is used by `client.Send` and `client.SendMany`. Only
+  needed if this app sends events. Keep it secret.
+
+```go
+id, err := client.Send(ctx, flow.Event{Name: "user/signed-up", Data: map[string]any{"userId": "u_1"}})
+```
 
 ## Things to know
 

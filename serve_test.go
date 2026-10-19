@@ -17,9 +17,9 @@ import (
 )
 
 const (
-	testKey      = "signkey-test-abababababababababababababababababababababababababababababababab"
-	testFallback = "signkey-test-cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd"
-	testBearer   = "signkey-test-9a2db2e23f1504cd056606553ac049c5e718e8f9ce9233876df1a7a1821af885"
+	testKey      = "signkey-abababababababababababababababababababababababababababababababab"
+	testFallback = "signkey-cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd"
+	testBearer   = "signkey-9a2db2e23f1504cd056606553ac049c5e718e8f9ce9233876df1a7a1821af885"
 )
 
 var testNow = time.UnixMilli(1_760_000_000_000)
@@ -70,7 +70,7 @@ func invokeBody(t *testing.T, fnID string, o reqOpts) []byte {
 		memo = map[string]any{}
 	}
 	req := map[string]any{
-		"fnId": fnID, "runId": "run_1", "env": "test", "event": event,
+		"fnId": fnID, "runId": "run_1", "event": event,
 		"events": []any{event}, "memo": memo, "attempt": 0, "maxAttempts": 5,
 	}
 	if o.target != "" {
@@ -623,7 +623,7 @@ func TestSignatureRejected(t *testing.T) {
 	ran := false
 	define(t, c, "fn", func(ctx context.Context, in Input[charge]) (any, error) { ran = true; return nil, nil })
 	body := invokeBody(t, "fn", reqOpts{})
-	wrongKey := "signkey-test-0000000000000000000000000000000000000000000000000000000000000000"
+	wrongKey := "signkey-0000000000000000000000000000000000000000000000000000000000000000"
 
 	bad, _ := signRequest(wrongKey, body, testNow)
 	old, _ := signRequest(testKey, body, testNow.Add(-301*time.Second))
@@ -791,7 +791,7 @@ func TestPutSync(t *testing.T) {
 		got.method, got.path, got.auth, got.ctype = r.Method, r.URL.Path, r.Header.Get("Authorization"), r.Header.Get("Content-Type")
 		got.body, _ = io.ReadAll(r.Body)
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"ok":true,"env":"test","created":true,"modified":["charge"],"archived":[]}`))
+		_, _ = w.Write([]byte(`{"ok":true,"created":true,"modified":["charge"],"archived":[]}`))
 	}))
 	defer engine.Close()
 

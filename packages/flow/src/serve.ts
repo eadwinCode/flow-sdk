@@ -106,7 +106,7 @@ function checkKeys(s: FlowSettings): string | null {
     try {
       parseSigningKey(key);
     } catch {
-      return "the signing key is not in the format signkey-<env>-<64 hex chars>";
+      return "the signing key is not in the format signkey-<64 hex chars>";
     }
   }
   return null;

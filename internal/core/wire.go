@@ -77,7 +77,6 @@ func (m *MemoEntry) UnmarshalJSON(b []byte) error {
 type InvokeRequest struct {
 	FnID         string               `json:"fnId"`
 	RunID        string               `json:"runId"`
-	Env          string               `json:"env"`
 	Event        json.RawMessage      `json:"event"`
 	Events       []json.RawMessage    `json:"events"`
 	Memo         map[string]MemoEntry `json:"memo"`

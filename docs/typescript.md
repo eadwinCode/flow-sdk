@@ -11,7 +11,7 @@ Each release has the package as a `.tgz` file on its
 by URL. No npm account or login is needed.
 
 ```bash
-npm install https://github.com/eadwinCode/flow-sdk/releases/download/v0.1.0/clevix-flow-0.1.0.tgz
+npm install https://github.com/eadwinCode/flow-sdk/releases/download/v0.2.0/clevix-flow-0.2.0.tgz
 ```
 
 pnpm, yarn and bun take the same URL (`pnpm add <url>`, `yarn add <url>`,
@@ -19,7 +19,7 @@ pnpm, yarn and bun take the same URL (`pnpm add <url>`, `yarn add <url>`,
 
 ```json
 "dependencies": {
-  "@clevix/flow": "https://github.com/eadwinCode/flow-sdk/releases/download/v0.1.0/clevix-flow-0.1.0.tgz"
+  "@clevix/flow": "https://github.com/eadwinCode/flow-sdk/releases/download/v0.2.0/clevix-flow-0.2.0.tgz"
 }
 ```
 
@@ -101,18 +101,54 @@ set `app.set("trust proxy", ...)` or `FLOW_SERVE_URL`.
 
 ## Settings
 
-Set these as Worker vars and secrets (or env vars on Node). Options passed to
-`new Flow({ ... })` win over them.
+Each setting can go in `new Flow({ ... })` or in an env var. A value in code wins.
 
-- `FLOW_SIGNING_KEY`: checks calls from the engine and signs sync. Required unless dev mode.
-- `FLOW_SIGNING_KEY_FALLBACK`: the old key while you rotate.
-- `FLOW_EVENT_KEY`: for `flow.send`.
-- `FLOW_BASE_URL`: the engine's URL. Needed for sync, `flow.send`, and big runs:
-  when a run's state is over 4 MiB, the engine does not send it in the call, and
-  the SDK loads it from the engine. So set it for any app whose runs can hold more
-  than 4 MiB.
-- `FLOW_SERVE_URL`: the public URL of this endpoint.
-- `FLOW_DEV=1`: turns off signature checks. For local work only.
+| Option | Env var | What it is for |
+| --- | --- | --- |
+| `signingKey` | `FLOW_SIGNING_KEY` | Checks that calls really come from the engine, and proves who you are when you sync. Required unless dev mode. Secret. |
+| `signingKeyFallback` | `FLOW_SIGNING_KEY_FALLBACK` | The old signing key while you swap keys. Secret. |
+| `eventKey` | `FLOW_EVENT_KEY` | Lets `flow.send` send events. Only needed if this app sends events. Secret. |
+| `baseUrl` | `FLOW_BASE_URL` | The engine's URL. Needed for sync, `flow.send`, and big runs: when a run's state is over 4 MiB, the engine does not send it in the call, and the SDK loads it from the engine. |
+| `serveUrl` | `FLOW_SERVE_URL` | The public URL of this endpoint, with the path. If unset, taken from the request. |
+| `isDev` | `FLOW_DEV=1` | Turns off signature checks. For local work only, never on a public app. |
+
+Both keys come from the dashboard's Keys page. Each is shown once, when you make it.
+
+In code:
+
+```ts
+const flow = new Flow({
+  id: "shop",
+  signingKey: "signkey-...",   // better: read it from a secret, not a string in code
+  eventKey: "...",
+  baseUrl: "https://worker.clevixstudio.com",
+  serveUrl: "https://shop.example.com/api/flow",
+});
+```
+
+Or leave them out and set env vars. On Workers, `serve` reads them from the
+Worker's `env`:
+
+```bash
+wrangler secret put FLOW_SIGNING_KEY
+wrangler secret put FLOW_EVENT_KEY
+```
+
+```jsonc
+// wrangler.jsonc
+"vars": {
+  "FLOW_BASE_URL": "https://worker.clevixstudio.com",
+  "FLOW_SERVE_URL": "https://shop.example.com/api/flow"
+}
+```
+
+Where each key is used:
+
+- The **signing key** is used by `serve` only. You never pass it anywhere else.
+- The **event key** is used by `flow.send`. On Workers, pass the handler's `env` so it
+  can find `FLOW_EVENT_KEY`: `await flow.send({ name: "user/signed-up", data }, { env })`.
+  Any other service that sends events needs its own event key: it posts to
+  `POST {FLOW_BASE_URL}/e` with `Authorization: Bearer <event key>`.
 
 ## The endpoint
 

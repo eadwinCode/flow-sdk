@@ -30,7 +30,7 @@ export interface FlowEvent {
 export interface IncomingEvent {
   name: string;
   data?: Json;
-  /** Idempotency ID: two events with the same `id` in one environment are one event. */
+  /** Idempotency ID: two events with the same `id` are one event. */
   id?: string;
   ts?: number;
   user?: Json;
@@ -52,7 +52,6 @@ export interface PayloadRef {
 export interface InvokeRequest {
   fnId: string;
   runId: string;
-  env: string;
   event: FlowEvent;
   events: FlowEvent[];
   memo: Record<string, MemoEntry>;
@@ -149,7 +148,6 @@ export type InvokeOutcome =
 /** Message on the `invoke` Queue, from a RunDO to the invoker. */
 export interface InvokeMessage {
   runId: string;
-  env: string;
   appId: string;
   token: string;
   timeoutMs: number;

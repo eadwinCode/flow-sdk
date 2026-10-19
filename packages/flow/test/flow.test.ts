@@ -26,7 +26,7 @@ const vectors = JSON.parse(
   readFileSync(fileURLToPath(new URL("../../../testdata/vectors.json", import.meta.url)), "utf8"),
 ) as Vectors;
 
-const KEY = generateSigningKey("test");
+const KEY = generateSigningKey();
 const URL_ = "https://app.example.com/api/flow";
 const h = (id: string, n = 0) => hashStepId(id, n);
 
@@ -36,7 +36,7 @@ function event(overrides: Partial<FlowEvent> = {}): FlowEvent {
 
 function invoke(fnId: string, memo: Record<string, MemoEntry> = {}, extra: Partial<InvokeRequest> = {}): InvokeRequest {
   const e = event();
-  return { fnId, runId: "run_1", env: "test", event: e, events: [e], memo, attempt: 0, maxAttempts: 3, ...extra };
+  return { fnId, runId: "run_1", event: e, events: [e], memo, attempt: 0, maxAttempts: 3, ...extra };
 }
 
 async function post(handler: (r: Request) => Promise<Response>, body: InvokeRequest | string, key = KEY): Promise<Response> {
@@ -401,7 +401,7 @@ describe("signatures", () => {
     const { handle } = app(run);
     const body = JSON.stringify(invoke("fn"));
     const old = await signRequest(KEY, body, Math.floor(Date.now() / 1000) - 301);
-    const wrong = await signRequest(generateSigningKey("test"), body);
+    const wrong = await signRequest(generateSigningKey(), body);
     for (const header of [null, old, wrong, "t=abc&s=def"]) {
       const headers: Record<string, string> = header ? { "X-Inngest-Signature": header } : {};
       const res = await handle(new Request(URL_, { method: "POST", headers, body }));
@@ -415,7 +415,7 @@ describe("signatures", () => {
   });
 
   it("accepts the fallback key while rotating", async () => {
-    const oldKey = generateSigningKey("test");
+    const oldKey = generateSigningKey();
     const flow = new Flow({ id: "shop", signingKey: KEY, signingKeyFallback: oldKey });
     const handle = serve({ client: flow, functions: [flow.createFunction({ id: "fn" }, { event: "a/b" }, () => "ok")] });
     const res = await post(handle, invoke("fn"), oldKey);
@@ -494,7 +494,7 @@ describe("manifest and sync", () => {
     const calls: Array<{ url: string; init: RequestInit }> = [];
     const mock = (async (url: string, init: RequestInit) => {
       calls.push({ url, init });
-      return Response.json({ ok: true, env: "test", created: true, modified: ["billing-charge"], archived: [] });
+      return Response.json({ ok: true, created: true, modified: ["billing-charge"], archived: [] });
     }) as unknown as typeof fetch;
     const client = new Flow({ ...flow.options, fetch: mock });
     const handle = serve({ client, functions: [client.createFunction({ id: "charge" }, { event: "billing/charge" }, () => null)] });
@@ -628,7 +628,7 @@ describe("big state (useApi)", () => {
 
   it("uses the current signing key, not the fallback", async () => {
     const { calls, mock } = engine([{ events: [], memo: {}, next: null }]);
-    const handle = bigApp(() => "ok", mock, { signingKeyFallback: generateSigningKey("test") });
+    const handle = bigApp(() => "ok", mock, { signingKeyFallback: generateSigningKey() });
     expect((await post(handle, useApi())).status).toBe(200);
     expect(calls[0]!.auth).toBe(`Bearer ${await signingKeyBearer(KEY)}`);
   });

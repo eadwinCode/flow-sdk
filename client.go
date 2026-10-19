@@ -87,7 +87,7 @@ func NewClient(opts ClientOpts) (*Client, error) {
 		if k == "" {
 			continue
 		}
-		if _, _, err := parseSigningKey(k); err != nil {
+		if _, err := parseSigningKey(k); err != nil {
 			return nil, err
 		}
 	}

@@ -11,11 +11,11 @@ import { serve as serveNext } from "../src/next.ts";
 
 // Each adapter must answer exactly as the fetch handler does.
 
-const KEY = generateSigningKey("test");
+const KEY = generateSigningKey();
 
 function invoke(fnId: string): InvokeRequest {
   const e = { id: "evt_1", name: "user/signed-up", data: { userId: "u1" }, ts: 1_760_000_000_000 };
-  return { fnId, runId: "run_1", env: "test", event: e, events: [e], memo: {}, attempt: 0, maxAttempts: 3 };
+  return { fnId, runId: "run_1", event: e, events: [e], memo: {}, attempt: 0, maxAttempts: 3 };
 }
 
 /** One function that returns at once, and one with a step (206). */
@@ -67,7 +67,7 @@ function common(name: string, call: () => Promise<{ call: Call; url: string }>) 
 
     it("rejects a bad signature with 401", async () => {
       const { call: c, url } = await call();
-      const res = await c(await signedPost(url, invoke("hello"), generateSigningKey("test")));
+      const res = await c(await signedPost(url, invoke("hello"), generateSigningKey()));
       expect(res.status).toBe(401);
       const missing = await c({ url, method: "POST", body: JSON.stringify(invoke("hello")) });
       expect(missing.status).toBe(401);
