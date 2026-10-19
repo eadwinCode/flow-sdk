@@ -12,7 +12,7 @@ import {
   type RunStatePage,
 } from "@clevix/protocol";
 import { describe, expect, it, vi } from "vitest";
-import { Flow, hashStepId, NonRetriableError, RetryAfterError, SDK_VERSION, serve, StepError, type FlowFunction, type FlowOptions } from "../src/index.ts";
+import { DEFAULT_BASE_URL, Flow, hashStepId, NonRetriableError, RetryAfterError, SDK_VERSION, serve, StepError, type FlowFunction, type FlowOptions } from "../src/index.ts";
 import { serve as serveCloudflare } from "../src/cloudflare.ts";
 import { sha1Hex } from "../src/sha1.ts";
 
@@ -450,7 +450,7 @@ describe("signatures", () => {
 });
 
 describe("manifest and sync", () => {
-  const flow = new Flow({ id: "billing", signingKey: KEY, baseUrl: "https://engine.example.com/", serveUrl: URL_ });
+  const flow = new Flow({ id: "billing", signingKey: KEY, baseUrl: "https://engine.example.com/" });
   const charge = flow.createFunction(
     {
       id: "charge",
@@ -538,6 +538,32 @@ describe("manifest and sync", () => {
     expect(() => flow.createFunction({ id: "-x" }, { event: "a/b" }, () => 1)).toThrow();
     expect(() => flow.createFunction({ id: "x" }, [], () => 1)).toThrow();
     expect(() => flow.createFunction({ id: "a".repeat(60), onFailure: () => 1 }, { event: "a/b" }, () => 1)).toThrow(/too long/);
+  });
+});
+
+describe("engine URL", () => {
+  it("is the option, else FLOW_BASE_URL, else the default", () => {
+    expect(DEFAULT_BASE_URL).toBe("https://worker.clevixstudio.com");
+    expect(new Flow({ id: "a" }).settings({}).baseUrl).toBe(DEFAULT_BASE_URL);
+    expect(new Flow({ id: "a" }).settings({ FLOW_BASE_URL: "https://mine.example.com" }).baseUrl).toBe("https://mine.example.com");
+    expect(new Flow({ id: "a", baseUrl: "https://opt.example.com" }).settings({ FLOW_BASE_URL: "https://mine.example.com" }).baseUrl).toBe(
+      "https://opt.example.com",
+    );
+    // Empty counts as not set, like in the Go SDK.
+    expect(new Flow({ id: "a", baseUrl: "" }).settings({ FLOW_BASE_URL: "" }).baseUrl).toBe(DEFAULT_BASE_URL);
+  });
+
+  it("PUT sync sends this endpoint's own URL (FLOW_SERVE_URL is gone)", async () => {
+    const bodies: string[] = [];
+    const mock = (async (_url: string, init: RequestInit) => {
+      bodies.push(init.body as string);
+      return Response.json({ ok: true });
+    }) as unknown as typeof fetch;
+    const flow = new Flow({ id: "shop", signingKey: KEY, fetch: mock });
+    await serve({ client: flow, functions: [] })(new Request("https://shop.example.com/api/flow?x=1", { method: "PUT" }), {
+      FLOW_SERVE_URL: "https://ignored.example.com/flow",
+    });
+    expect(JSON.parse(bodies[0]!).url).toBe("https://shop.example.com/api/flow");
   });
 });
 
@@ -662,18 +688,13 @@ describe("big state (useApi)", () => {
     });
   }
 
-  it("answers 500 StateLoadFailed when the engine URL is not set", async () => {
-    const { calls, mock } = engine([]);
+  it("loads the state from the default engine URL when none is set", async () => {
+    const { calls, mock } = engine([{ events: [event()], memo: {}, next: null }]);
     const flow = new Flow({ id: "shop", signingKey: KEY, fetch: mock });
-    const handler = vi.fn(() => "ran");
-    const handle = serve({ client: flow, functions: [flow.createFunction({ id: "fn" }, { event: "user/signed-up" }, handler)] });
+    const handle = serve({ client: flow, functions: [flow.createFunction({ id: "fn" }, { event: "user/signed-up" }, () => "ran")] });
     const res = await post(handle, useApi());
-    expect(res.status).toBe(500);
-    const body = (await res.json()) as { name: string; message: string };
-    expect(body.name).toBe("StateLoadFailed");
-    expect(body.message).toContain("FLOW_BASE_URL");
-    expect(handler).not.toHaveBeenCalled();
-    expect(calls).toEqual([]);
+    expect(res.status).toBe(200);
+    expect(calls[0]!.url).toMatch(/^https:\/\/worker\.clevixstudio\.com\/runs\//);
   });
 
   it("needs a signing key even in dev mode (same as the Go SDK)", async () => {

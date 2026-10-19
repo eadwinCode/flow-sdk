@@ -26,11 +26,8 @@ type ClientOpts struct {
 	SigningKeyFallback *string
 	// EventKey is used to send events. Env: FLOW_EVENT_KEY.
 	EventKey *string
-	// BaseURL is the engine URL. Env: FLOW_BASE_URL.
+	// BaseURL is the engine URL. Env: FLOW_BASE_URL. Default: DefaultBaseURL.
 	BaseURL *string
-	// ServeURL is the public URL of this app's endpoint, sent in the manifest.
-	// Env: FLOW_SERVE_URL. If unset, it is taken from the incoming request.
-	ServeURL *string
 	// Dev turns off signature checks. Env: FLOW_DEV=1.
 	Dev *bool
 	// HTTPClient is used for sync and sending events. Default: http.DefaultClient.
@@ -44,7 +41,6 @@ type Client struct {
 	fallbackKey string
 	eventKey    string
 	baseURL     string
-	serveURL    string
 	dev         bool
 	http        *http.Client
 	now         func() time.Time
@@ -52,6 +48,10 @@ type Client struct {
 	mu        sync.Mutex
 	functions []*function
 }
+
+// DefaultBaseURL is the engine URL when neither ClientOpts.BaseURL nor
+// FLOW_BASE_URL is set. Self-hosters set FLOW_BASE_URL.
+const DefaultBaseURL = "https://worker.clevixstudio.com"
 
 func pick(opt *string, env string) string {
 	if opt != nil {
@@ -71,9 +71,12 @@ func NewClient(opts ClientOpts) (*Client, error) {
 		fallbackKey: pick(opts.SigningKeyFallback, "FLOW_SIGNING_KEY_FALLBACK"),
 		eventKey:    pick(opts.EventKey, "FLOW_EVENT_KEY"),
 		baseURL:     strings.TrimRight(pick(opts.BaseURL, "FLOW_BASE_URL"), "/"),
-		serveURL:    pick(opts.ServeURL, "FLOW_SERVE_URL"),
 		http:        opts.HTTPClient,
 		now:         time.Now,
+	}
+	// Empty counts as not set, like in the TypeScript SDK.
+	if c.baseURL == "" {
+		c.baseURL = DefaultBaseURL
 	}
 	if opts.Dev != nil {
 		c.dev = *opts.Dev
@@ -153,11 +156,8 @@ func (c *Client) Manifest(serveURL string) AppManifest {
 // Sync sends the manifest to the engine (PUT {base}/apps/{appId}/sync) and
 // returns the engine's status code and body.
 func (c *Client) Sync(ctx context.Context, serveURL string) (int, []byte, error) {
-	if c.baseURL == "" {
-		return 0, nil, errors.New("flow: no engine URL (set FLOW_BASE_URL or ClientOpts.BaseURL)")
-	}
 	if serveURL == "" {
-		return 0, nil, errors.New("flow: no serve URL (set FLOW_SERVE_URL or ClientOpts.ServeURL)")
+		return 0, nil, errors.New("flow: no serve URL: pass the URL of this app's endpoint")
 	}
 	body, err := json.Marshal(c.Manifest(serveURL))
 	if err != nil {
@@ -210,9 +210,6 @@ func (c *Client) SendMany(ctx context.Context, events []Event) ([]string, error)
 }
 
 func (c *Client) send(ctx context.Context, payload any) ([]string, error) {
-	if c.baseURL == "" {
-		return nil, errors.New("flow: no engine URL (set FLOW_BASE_URL or ClientOpts.BaseURL)")
-	}
 	if c.eventKey == "" {
 		return nil, errors.New("flow: no event key (set FLOW_EVENT_KEY or ClientOpts.EventKey)")
 	}

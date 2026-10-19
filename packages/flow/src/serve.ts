@@ -86,7 +86,7 @@ export function serve(options: ServeOptions): FetchHandler {
         return handleRun(request, settings, byId);
       case "GET": {
         if (!(await signed(request, "", settings))) return unauthorized();
-        return json(buildManifest(client.id, serveUrl(request, settings), functions));
+        return json(buildManifest(client.id, serveUrl(request), functions));
       }
       case "PUT":
         return handleSync(request, settings, functions);
@@ -125,8 +125,13 @@ function unauthorized(): Response {
   return errorResponse(401, { name: "Unauthorized", message: "missing or invalid signature" });
 }
 
-function serveUrl(request: Request, s: FlowSettings): string {
-  if (s.serveUrl) return s.serveUrl;
+/**
+ * This endpoint's URL as the request shows it (origin and path), sent in the manifest.
+ * An app added by URL in the dashboard does not need it: the engine keeps the URL it
+ * was given, and keeps a stored URL when this one is not usable (an app behind a proxy
+ * may see itself as http).
+ */
+function serveUrl(request: Request): string {
   const url = new URL(request.url);
   return `${url.origin}${url.pathname}`;
 }
@@ -183,7 +188,6 @@ const MAX_STATE_PAGES = 1000;
  * Throws on any failure, so the function never runs with part of its memo.
  */
 async function loadState(runId: string, s: FlowSettings): Promise<{ memo: Record<string, MemoEntry>; events: FlowEvent[] }> {
-  if (!s.baseUrl) throw new Error("the run state is too big for the request and the engine URL is not set: set FLOW_BASE_URL");
   if (typeof runId !== "string" || runId.length === 0) throw new Error("the invoke request has no runId");
   const headers: Record<string, string> = {};
   // The engine's state API always needs the key, also in dev mode (same as the Go SDK).
@@ -226,13 +230,10 @@ async function loadState(runId: string, s: FlowSettings): Promise<{ memo: Record
 }
 
 async function handleSync(request: Request, s: FlowSettings, functions: FlowFunction[]): Promise<Response> {
-  if (!s.baseUrl) {
-    return errorResponse(500, { name: "NoBaseUrl", message: "sync needs the engine URL: set FLOW_BASE_URL" });
-  }
   if (!s.signingKey) {
     return errorResponse(500, { name: "NoSigningKey", message: "sync needs a signing key: set FLOW_SIGNING_KEY" });
   }
-  const manifest = buildManifest(s.appId, serveUrl(request, s), functions);
+  const manifest = buildManifest(s.appId, serveUrl(request), functions);
   let response: Response;
   try {
     response = await s.fetch(`${trimSlash(s.baseUrl)}/apps/${encodeURIComponent(s.appId)}/sync`, {

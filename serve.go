@@ -89,11 +89,10 @@ func (c *Client) readSigned(w http.ResponseWriter, r *http.Request) ([]byte, boo
 	return body, true
 }
 
-// serveURLFor is the configured serve URL, or the URL of this request.
+// serveURLFor is the URL of this request (scheme, host and path), sent in the
+// manifest. An app added by URL in the dashboard does not need it: the engine
+// keeps the URL it was given, and keeps a stored URL when this one is not usable.
 func (c *Client) serveURLFor(r *http.Request) string {
-	if c.serveURL != "" {
-		return c.serveURL
-	}
 	scheme := "http"
 	if r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https" {
 		scheme = "https"
@@ -152,9 +151,6 @@ func (c *Client) servePost(w http.ResponseWriter, r *http.Request) {
 // It returns an error unless every page loaded, so the function never runs
 // with part of its memo.
 func (c *Client) loadState(ctx context.Context, runID string) (map[string]core.MemoEntry, []json.RawMessage, error) {
-	if c.baseURL == "" {
-		return nil, nil, errors.New("flow: no engine URL to load the run state (set FLOW_BASE_URL or ClientOpts.BaseURL)")
-	}
 	if c.signingKey == "" {
 		return nil, nil, errors.New("flow: no signing key to load the run state (set FLOW_SIGNING_KEY)")
 	}

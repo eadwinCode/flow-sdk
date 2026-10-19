@@ -18,6 +18,8 @@ curl -fsS -X PUT https://shop.example.com/api/flow
 ```
 
 `-f` makes curl fail on an error answer, so your deploy fails too and you notice.
+Instead of `curl`, you can press **Resync** on the Apps page: the engine then asks
+the app for its functions at the URL it was added with.
 
 In GitHub Actions:
 
@@ -57,18 +59,22 @@ The answer to sync looks like:
 
 ### The signing key
 
-One signing key is used by the engine to sign its calls to **all** apps, and by all
-apps to sync. To replace it without any failed calls:
+Each app has its own signing key, made when you add the app (**Apps → Add app**). The
+engine signs its calls to the app with it, and the app syncs with it. An app's key
+works for that app only: it can not sync another app or read another app's runs.
+To replace an app's key without any failed calls:
 
-1. In the dashboard, **Keys → Create signing key**. The engine now accepts the new
-   key and the old one, but still signs with the old one.
-2. Deploy every app with `FLOW_SIGNING_KEY` = the new key and
-   `FLOW_SIGNING_KEY_FALLBACK` = the old key. They now accept calls signed with
-   either. The Keys page shows which key each app last synced with, so you can see
-   when all apps are done.
-3. **Promote** the new key. The engine signs with it from now on.
-4. **Revoke** the old key. Remove `FLOW_SIGNING_KEY_FALLBACK` at each app's next
+1. In the dashboard, open the app's **Keys** (on the Apps page) and click **New key**.
+   The engine now accepts the new key and the old one from this app, but still
+   signs with the old one.
+2. Deploy the app with `FLOW_SIGNING_KEY` = the new key and
+   `FLOW_SIGNING_KEY_FALLBACK` = the old key. It now accepts calls signed with
+   either. The table shows which key the app last synced with.
+3. **Promote** the new key. The engine signs this app's calls with it from now on.
+4. **Revoke** the old key. Remove `FLOW_SIGNING_KEY_FALLBACK` at the app's next
    deploy.
+
+Other apps are not touched.
 
 If a signing key leaks, do the same steps quickly.
 
@@ -134,8 +140,9 @@ Events are kept 4 days.
 | Sync manifest | 1 MB |
 
 When a run's state passes 4 MB, the engine stops sending it in each call, and the
-SDK loads it from the engine instead. For that, the app needs `FLOW_BASE_URL`. Set
-it in every app, even ones that never send events.
+SDK loads it from the engine instead, at `FLOW_BASE_URL` (default
+`https://worker.clevixstudio.com`). If you run your own engine, set it in every app,
+even ones that never send events.
 
 ## Troubleshooting
 
@@ -143,11 +150,12 @@ it in every app, even ones that never send events.
 
 | Answer | Cause |
 | --- | --- |
-| `500 NoBaseUrl` / `NoSigningKey` | The app is missing `FLOW_BASE_URL` or `FLOW_SIGNING_KEY`. |
+| `500 NoSigningKey` | The app is missing `FLOW_SIGNING_KEY`. |
 | `401 invalid signing key` | The key is wrong, revoked, or from another engine. |
-| `400 app url must be https` | Set `FLOW_SERVE_URL` to the `https` URL. Behind a proxy, the request may look like `http`. |
+| `403 this signing key belongs to another app` | The app has another app's key. Each app needs its own (Add app). |
+| `400 app url must be https` | The sync sent the URL of the request it got, and it is not `https`. Send the `PUT` to the public `https` URL. Behind a proxy the request may look like `http`: add the app by URL in the dashboard, and the engine keeps that URL. |
 | `400 function <id>: ...` | A bad option, cron or expression in that function. The message says which. |
-| `502 SyncFailed` | The app could not reach the engine. Check `FLOW_BASE_URL`. |
+| `502 SyncFailed` | The app could not reach the engine. If you run your own engine, check `FLOW_BASE_URL`. |
 
 **An event starts no run**
 
@@ -164,15 +172,24 @@ it in every app, even ones that never send events.
 
 | Error in the run | Cause |
 | --- | --- |
-| `401 Unauthorized` (missing or invalid signature) | The app has a different signing key than the engine signs with, or its clock is more than 5 minutes off. During key rotation, set the fallback key. |
+| `401 Unauthorized` (missing or invalid signature) | The app has a different signing key than the engine signs with for it, or its clock is more than 5 minutes off. During key rotation, set the fallback key. |
 | `500 NoSigningKey` | The app has no `FLOW_SIGNING_KEY`. |
 | `FunctionNotFound` | The engine called a function the app no longer has. Sync, or keep the old function until its runs end. |
 | `TimeoutError` | One call took longer than `timeouts.step`. Split the work into more steps. |
 | `OutputTooLarge` | A step or the function returned more than 4 MB. Save big data elsewhere (a bucket, a database) and return its ID. |
 | `StateOverflowed` | The run holds more than 32 MB in all. Return less from each step. |
-| `StateLoadFailed` | The SDK could not load a big run's state. Check `FLOW_BASE_URL`. It is retried. |
+| `StateLoadFailed` | The SDK could not load a big run's state. If you run your own engine, check `FLOW_BASE_URL`. It is retried. |
 | `RedirectNotAllowed` | The app URL answers with a redirect. Sync the final URL (watch out for `www.` and trailing `/`). |
 | Express: 500 about the body | `express.json()` ran before the adapter. See [typescript.md](typescript.md#other-frameworks). |
+
+**Runs show "Waiting for app"**
+
+The engine could not reach the app at all (it did not answer, or its host answered
+502, 503, 504, or Cloudflare's 521, 522, 523 or 530). That is not a failed attempt:
+the runs wait, and go on by themselves when the app answers again. The Apps page
+shows the app as **Down**, with the last error. Fix the app, or press **Resync**. A
+run that waits 7 days fails with `AppUnavailable`. A cron function keeps only its
+newest waiting run.
 
 **A step ran twice.** That can happen: when the app crashes, or the answer is lost,
 after the step did its work. Use the step's idempotency key with outside APIs (see

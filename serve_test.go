@@ -37,7 +37,7 @@ func newClient(t *testing.T, opts ClientOpts) *Client {
 	if opts.SigningKeyFallback == nil {
 		opts.SigningKeyFallback = StrPtr("")
 	}
-	for _, p := range []**string{&opts.EventKey, &opts.BaseURL, &opts.ServeURL} {
+	for _, p := range []**string{&opts.EventKey, &opts.BaseURL} {
 		if *p == nil {
 			*p = StrPtr("")
 		}
@@ -675,6 +675,23 @@ func TestEnvVars(t *testing.T) {
 	if c.dev || c.baseURL != "https://x" {
 		t.Fatal("options must win over env")
 	}
+	t.Setenv("FLOW_BASE_URL", "")
+	c, _ = NewClient(ClientOpts{AppID: "billing"})
+	if c.baseURL != DefaultBaseURL || DefaultBaseURL != "https://worker.clevixstudio.com" {
+		t.Fatalf("default engine URL: got %q", c.baseURL)
+	}
+	// Empty counts as not set, like in the TypeScript SDK.
+	c, _ = NewClient(ClientOpts{AppID: "billing", BaseURL: StrPtr("")})
+	if c.baseURL != DefaultBaseURL {
+		t.Fatalf("empty BaseURL: got %q", c.baseURL)
+	}
+	// FLOW_SERVE_URL is gone: the manifest URL is the request's.
+	t.Setenv("FLOW_SERVE_URL", "https://ignored.example.com/flow")
+	c, _ = NewClient(ClientOpts{AppID: "billing"})
+	r := httptest.NewRequest(http.MethodGet, "https://billing.example.com/api/flow?x=1", nil)
+	if got := c.serveURLFor(r); got != "https://billing.example.com/api/flow" {
+		t.Fatalf("serve URL: got %q", got)
+	}
 	if _, err := NewClient(ClientOpts{AppID: "billing", SigningKey: StrPtr("nope")}); err == nil {
 		t.Fatal("bad signing key accepted")
 	}
@@ -795,7 +812,8 @@ func TestPutSync(t *testing.T) {
 	}))
 	defer engine.Close()
 
-	c := newClient(t, ClientOpts{BaseURL: StrPtr(engine.URL + "/"), ServeURL: StrPtr("https://billing.example.com/api/flow")})
+	// The manifest URL is the URL of the PUT request itself.
+	c := newClient(t, ClientOpts{BaseURL: StrPtr(engine.URL + "/")})
 	testFunctions(t, c)
 	a := send(t, c, http.MethodPut, nil, "")
 	if a.status != 200 || !strings.Contains(string(a.body), `"created":true`) {

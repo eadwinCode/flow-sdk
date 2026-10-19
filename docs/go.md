@@ -25,7 +25,7 @@ import (
 )
 ```
 
-Pin a version with `@v0.2.0` in place of `@latest`. To upgrade, run `go get`
+Pin a version with `@v0.3.0` in place of `@latest`. To upgrade, run `go get`
 again with the new version, then `go mod tidy`. The versions are the
 [releases](https://github.com/eadwinCode/flow-sdk/releases).
 
@@ -93,7 +93,7 @@ func main() {
 func loadName(ctx context.Context, id string) (string, error) { return "Ada", nil }
 ```
 
-After each deploy, sync the app: `curl -X PUT https://your-app/api/flow`.
+Add the app in the dashboard (**Apps → Add app**) by this endpoint's URL. After each deploy, sync it: **Resync** in the dashboard, or `curl -X PUT https://your-app/api/flow`.
 
 ## Settings
 
@@ -101,26 +101,24 @@ Set these as environment variables, or in `flow.ClientOpts` (code wins).
 
 | Variable | Use |
 | --- | --- |
-| `FLOW_SIGNING_KEY` | Checks calls from the engine and signs sync. Required unless dev. |
-| `FLOW_SIGNING_KEY_FALLBACK` | Old key while rotating. |
+| `FLOW_SIGNING_KEY` | The app's own signing key. Checks calls from the engine and signs sync. Required unless dev. |
+| `FLOW_SIGNING_KEY_FALLBACK` | The app's old key while rotating. |
 | `FLOW_EVENT_KEY` | For `client.Send` and `client.SendMany`. |
-| `FLOW_BASE_URL` | Engine URL. Also needed to load big run state (see below). |
-| `FLOW_SERVE_URL` | Public URL of your endpoint. If unset, taken from the PUT request. |
+| `FLOW_BASE_URL` | Engine URL. Default: `https://worker.clevixstudio.com` (`flow.DefaultBaseURL`). Set it only if you run your own engine. |
 | `FLOW_DEV` | `1` turns off signature checks. |
 
 Without a signing key, and not in dev mode, `Serve()` answers every request
 with 500 `NoSigningKey`.
 
-Both keys come from the dashboard's Keys page. Each is shown once, when you
-make it. In code:
+Both keys come from the dashboard's **Add app** dialog (the event key also from
+the Keys page). Each is shown once, when you make it. In code:
 
 ```go
 client, err := flow.NewClient(flow.ClientOpts{
 	AppID:      "billing",
 	SigningKey: flow.StrPtr(os.Getenv("MY_SIGNING_KEY")), // any source you like
 	EventKey:   flow.StrPtr(os.Getenv("MY_EVENT_KEY")),
-	BaseURL:    flow.StrPtr("https://worker.clevixstudio.com"),
-	ServeURL:   flow.StrPtr("https://billing.example.com/api/flow"),
+	BaseURL:    flow.StrPtr("https://flow.example.com"), // only for your own engine
 })
 ```
 
@@ -163,8 +161,8 @@ id, err := client.Send(ctx, flow.Event{Name: "user/signed-up", Data: map[string]
   original trigger event).
 - **Big state.** When a run's state (events and step results) is over 4 MiB,
   the engine does not send it in the call. The SDK loads it from the engine
-  first, signed with your signing key. So set `FLOW_BASE_URL` for apps whose
-  runs can hold more than 4 MiB. If loading fails, the call answers 500
+  first, signed with your signing key, from `FLOW_BASE_URL` (or the default
+  engine URL). If loading fails, the call answers 500
   `StateLoadFailed` and the engine tries again.
 - **Invoke** takes the full function ID, `"<appId>-<functionId>"`. The other
   function can be in any app and any language.

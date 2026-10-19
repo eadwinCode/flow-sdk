@@ -1,5 +1,24 @@
 # Changelog
 
+## v0.3.0
+
+- **Apps are added by URL.** In the engine's dashboard, **Apps → Add app** makes the
+  app's own signing key (shown once), and then the engine calls the app's endpoint
+  to read its functions. The new flow: Add app → copy the key into the app as
+  `FLOW_SIGNING_KEY` → deploy the app → Connect. See
+  [docs/getting-started.md](docs/getting-started.md).
+- **One signing key per app.** No SDK change: each app gets its own
+  `FLOW_SIGNING_KEY`, and `FLOW_SIGNING_KEY_FALLBACK` while you rotate that app's
+  key. An app's key can not sync another app. Needs an engine with per-app keys.
+- **`FLOW_SERVE_URL` and the `serveUrl` / `ServeURL` option are gone.** The engine
+  already knows the app's URL. A `PUT` sync sends the URL of the request it got
+  (origin and path), as before when the setting was not set. Remove the variable
+  from your apps; it is ignored.
+- **`FLOW_BASE_URL` defaults to `https://worker.clevixstudio.com`** (option, then the
+  env var, then the default; empty counts as not set). Set it only if you run your
+  own engine. New exports: `DEFAULT_BASE_URL` (TypeScript), `flow.DefaultBaseURL` (Go).
+  The `500 NoBaseUrl` answer to a sync is gone.
+
 ## v0.2.0
 
 - **New signing key format: `signkey-<64 hex>`.** The engine no longer has
