@@ -142,6 +142,7 @@ reports an `error` state and tries again later.
 | Token | used to connect within 1 minute |
 | A connection | up to 1 hour, then a new token |
 | Browsers on one channel | 1,000 |
+| Open sockets per token | 1 at a time (the client gets a new token for every connect) |
 
 Needs an engine with realtime and its `REALTIME_TOKEN_SECRET` set. Without the
 secret, tokens fail with `503`.
