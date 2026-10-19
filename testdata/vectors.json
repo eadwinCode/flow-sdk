@@ -1,0 +1,72 @@
+{
+  "_about": "Shared test vectors. Both SDKs (TypeScript packages/flow, Go sdk/go) must match these exactly. Generated once; do not edit by hand.",
+  "stepIds": {
+    "rule": "Step ID = lowercase hex SHA-1 of the user's step ID for its first use in a run's code path (occurrence 0). The Nth repeat (occurrence N, N >= 1) of the same user ID hashes `${id}:${N}`. Strings are UTF-8.",
+    "cases": [
+      {
+        "id": "load-user",
+        "occurrence": 0,
+        "input": "load-user",
+        "hashed": "6f951bc10819e968dbee7ec0f3f6dad953fa9b27"
+      },
+      {
+        "id": "send-welcome",
+        "occurrence": 0,
+        "input": "send-welcome",
+        "hashed": "35b38d6e7e06b2259cf170fbc128c883b2327cab"
+      },
+      {
+        "id": "wait-3-days",
+        "occurrence": 0,
+        "input": "wait-3-days",
+        "hashed": "a04e900ae17c18227a08643dfaeb69d0470e4c7c"
+      },
+      {
+        "id": "step with spaces",
+        "occurrence": 0,
+        "input": "step with spaces",
+        "hashed": "f42ace3a89b6c0876cbd0309474ccae0332fa14c"
+      },
+      {
+        "id": "ünïcode-步",
+        "occurrence": 0,
+        "input": "ünïcode-步",
+        "hashed": "b0168085fc8e66cd8abfc318fd436aecc47cfc45"
+      },
+      {
+        "id": "load-user",
+        "occurrence": 1,
+        "input": "load-user:1",
+        "hashed": "8f6ce7ede8ef4f1cf81416aed35613d2c82c35d9"
+      },
+      {
+        "id": "load-user",
+        "occurrence": 2,
+        "input": "load-user:2",
+        "hashed": "32ada3c935b307494a4bb138ce86e5c05e7f15e4"
+      }
+    ]
+  },
+  "signatures": {
+    "rule": "X-Inngest-Signature = t=<unix seconds>&s=<hex HMAC-SHA256(key, body + t)>, where key is the signing key with the `signkey-<env>-` prefix removed, used as UTF-8 text (the 64 hex chars, not decoded bytes). Reject if |now - t| > 300 s. Check the current key and the fallback key.",
+    "cases": [
+      {
+        "signingKey": "signkey-test-abababababababababababababababababababababababababababababababab",
+        "body": "{\"fnId\":\"hello\",\"runId\":\"run_1\"}",
+        "t": 1760000000,
+        "header": "t=1760000000&s=fc187d386c184cafe44c38114d107c0276758c2a08670e513345473be51d1c74"
+      },
+      {
+        "signingKey": "signkey-test-abababababababababababababababababababababababababababababababab",
+        "body": "",
+        "t": 1760000300,
+        "header": "t=1760000300&s=885a42fd26d29636a0877f8037019723b2e31e7ab98317b1ab59747d3f0af9f1"
+      }
+    ]
+  },
+  "bearer": {
+    "rule": "App -> engine Authorization: Bearer signkey-<env>-<hex SHA-256 of the secret's DECODED bytes (hex-decoded)>.",
+    "signingKey": "signkey-test-abababababababababababababababababababababababababababababababab",
+    "bearer": "signkey-test-9a2db2e23f1504cd056606553ac049c5e718e8f9ce9233876df1a7a1821af885"
+  }
+}

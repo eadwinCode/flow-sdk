@@ -1,2 +1,127 @@
 # flow-sdk
-Public repository for the Flow SDK
+
+SDKs for **clevix-worker**, a durable workflow engine on Cloudflare. You write
+functions made of steps. The engine runs them, saves each step's result, and
+retries steps that fail. Sleeps and waits can last days.
+
+There are two SDKs. They speak the same protocol, so one app can call a function
+in the other language.
+
+| Language | Install | Guide |
+| --- | --- | --- |
+| Go | `go get github.com/eadwinCode/flow-sdk@latest` | [docs/go.md](docs/go.md) |
+| TypeScript | `npm install <.tgz URL from the release>` | [docs/typescript.md](docs/typescript.md) |
+
+The API follows Inngest (`inngestgo` for Go, `inngest` for TypeScript).
+
+## How it fits together
+
+1. Your app defines functions with the SDK.
+2. It serves one HTTP endpoint (for example `/api/flow`). The engine calls it to
+   run your steps. Every call is signed, and the SDK checks the signature.
+3. After each deploy, sync the app so the engine knows your functions:
+   `curl -X PUT https://your-app/api/flow`.
+4. Send events to the engine. Functions whose trigger matches start a run.
+
+## Quick start: Go
+
+```bash
+go get github.com/eadwinCode/flow-sdk@latest
+```
+
+```go
+package main
+
+import (
+	"context"
+	"net/http"
+	"time"
+
+	flow "github.com/eadwinCode/flow-sdk"
+	"github.com/eadwinCode/flow-sdk/step"
+)
+
+type SignedUp struct {
+	UserID string `json:"userId"`
+}
+
+func main() {
+	client, err := flow.NewClient(flow.ClientOpts{AppID: "billing-service"})
+	if err != nil {
+		panic(err)
+	}
+
+	_, err = flow.CreateFunction(client,
+		flow.FunctionOpts{ID: "welcome"},
+		flow.EventTrigger("user/signed-up", nil),
+		func(ctx context.Context, in flow.Input[SignedUp]) (any, error) {
+			_, err := step.Run(ctx, "send-email", func(ctx context.Context) (string, error) {
+				return "sent", nil // call your mailer here
+			})
+			if err != nil {
+				return nil, err
+			}
+			step.Sleep(ctx, "wait-a-day", 24*time.Hour)
+			return "done", nil
+		},
+	)
+	if err != nil {
+		panic(err)
+	}
+
+	http.Handle("/api/flow", client.Serve())
+	_ = http.ListenAndServe(":8080", nil)
+}
+```
+
+## Quick start: TypeScript
+
+Take the `.tgz` link from the newest
+[release](https://github.com/eadwinCode/flow-sdk/releases):
+
+```bash
+npm install https://github.com/eadwinCode/flow-sdk/releases/download/v0.1.0/clevix-flow-0.1.0.tgz
+```
+
+```ts
+import { Flow } from "@clevix/flow";
+import { serve } from "@clevix/flow/cloudflare";
+
+const flow = new Flow({ id: "shop" });
+
+const welcome = flow.createFunction(
+  { id: "welcome" },
+  { event: "user/signed-up" },
+  async ({ event, step }) => {
+    await step.run("send-email", () => sendEmail(event.data.userId));
+    await step.sleep("wait-a-day", "1d");
+    return "done";
+  },
+);
+
+export default serve({ client: flow, functions: [welcome] });
+```
+
+There are also adapters for Hono, Next.js and Express. See
+[docs/typescript.md](docs/typescript.md).
+
+## Settings
+
+Both SDKs read the same env vars. Values passed in code win.
+
+| Variable | Use |
+| --- | --- |
+| `FLOW_SIGNING_KEY` | Checks calls from the engine and signs sync. Required unless dev mode. |
+| `FLOW_SIGNING_KEY_FALLBACK` | The old key while you rotate. |
+| `FLOW_EVENT_KEY` | For sending events from your app. |
+| `FLOW_BASE_URL` | The engine's URL. Needed for sync, sending events, and runs over 4 MiB. |
+| `FLOW_SERVE_URL` | The public URL of your endpoint. |
+| `FLOW_DEV` | `1` turns off signature checks. For local work only. |
+
+## Versions
+
+Both SDKs share one version number. Each release has a git tag `vX.Y.Z` (used by
+Go) and a GitHub release with the TypeScript `.tgz`. To hear about new versions,
+use Watch → Custom → Releases on this repo.
+
+This repo holds the released code only. Each release updates it.
