@@ -26,7 +26,11 @@ export interface FunctionOptions {
   id: string;
   name?: string;
   retries?: number;
-  timeouts?: { step?: Duration };
+  /**
+   * `step`: the longest one step's call may take. `finish`: the longest the whole run
+   * may take, counted from its first step call; a run still going then is cancelled.
+   */
+  timeouts?: { step?: Duration; finish?: Duration };
   cancelOn?: CancelOn[];
   concurrency?: number | ConcurrencyOption | ConcurrencyOption[];
   throttle?: RateOption;

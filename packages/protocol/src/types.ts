@@ -174,7 +174,7 @@ export interface FunctionConfig {
   name?: string;
   triggers: Trigger[];
   retries?: number;
-  timeouts?: { step?: string | number };
+  timeouts?: { step?: string | number; finish?: string | number };
   cancelOn?: CancelOn[];
   [key: string]: unknown;
 }

@@ -63,7 +63,7 @@ and an `AppManifest` body:
 - `appId` and function IDs match `^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$`.
 - Each function needs at least one trigger: `{ "event": "...", "if"?: "..." }` or `{ "cron": "..." }`.
 - Config keys use Inngest's names and shapes and are copied as given: `retries`,
-  `timeouts: { step }`, `cancelOn`, `concurrency`, `throttle`, `rateLimit`,
+  `timeouts: { step, finish }`, `cancelOn`, `concurrency`, `throttle`, `rateLimit`,
   `debounce`, `batchEvents`, `priority`, `idempotency`, `singleton`. Durations are
   strings like `"30s"`, `"5m"`, `"7d"` or milliseconds as a number.
 - The engine answers 200 `{ ok, created, modified, archived, ... }`, or 400/401

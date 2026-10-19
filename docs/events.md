@@ -202,6 +202,7 @@ triggered by them.
 | --- | --- | --- |
 | `inngest/scheduled.timer` | A cron trigger fires | `cron` (the schedule), `scheduledAt` (ms) |
 | `inngest/function.failed` | A run fails for good | `function_id`, `run_id`, `error`, `event` |
+| `inngest/function.cancelled` | A run is cancelled (by you, `cancelOn`, a singleton, or `timeouts.finish`) | `function_id`, `run_id`, `event`, and `error` when there is one |
 | `inngest/function.invoked` | `step.invoke` starts a run | the `data` you passed |
 
 ## Limits

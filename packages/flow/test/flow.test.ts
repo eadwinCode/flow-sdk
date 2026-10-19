@@ -457,7 +457,7 @@ describe("manifest and sync", () => {
       name: "Charge",
       retries: 4,
       concurrency: { limit: 10, key: "event.data.accountId" },
-      timeouts: { step: "30s" },
+      timeouts: { step: "30s", finish: "15m" },
       onFailure: async ({ error, event, step }) => step.run("notify", () => ({ message: error.message, original: event.data.event.name })),
     },
     [{ event: "billing/charge" }, { cron: "0 2 * * *" }],
@@ -480,7 +480,7 @@ describe("manifest and sync", () => {
           triggers: [{ event: "billing/charge" }, { cron: "0 2 * * *" }],
           retries: 4,
           concurrency: { limit: 10, key: "event.data.accountId" },
-          timeouts: { step: "30s" },
+          timeouts: { step: "30s", finish: "15m" },
         },
         {
           id: "charge-failure",

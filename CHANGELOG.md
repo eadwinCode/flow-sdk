@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- **`timeouts.finish`** (Go: `Timeouts.Finish`): the longest a whole run may take,
+  counted from its first step call. A run still going then is cancelled with
+  `FunctionTimeout`. Needs an engine that has it; an older engine ignores it.
+- Docs: the engine now sends `inngest/function.cancelled` when a run is cancelled,
+  with the same data as `inngest/function.failed`.
+
 ## v0.3.0
 
 - **Apps are added by URL.** In the engine's dashboard, **Apps → Add app** makes the
