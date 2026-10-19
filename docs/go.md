@@ -1,5 +1,9 @@
 # Go SDK
 
+> This page is the Go reference: install, setup and settings. For how to
+> use the features (steps, events, cron, flow control), read the
+> [guides](README.md), starting with [getting started](getting-started.md).
+
 Write durable functions in Go and run them on the clevix-worker engine. The API
 follows Inngest's `inngestgo`. Standard library only.
 

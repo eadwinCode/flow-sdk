@@ -1,0 +1,301 @@
+# Getting started
+
+This guide takes you from nothing to a function that runs on the engine. It shows
+TypeScript and Go side by side; use the one your app is written in.
+
+## How it works
+
+```
+ your app                                 the engine
+ ────────                                 ──────────
+ functions ──── PUT  (sync, on deploy) ──▶ knows your functions
+                                           │
+ sender ─────── POST /e (an event) ──────▶ starts a run for each matching function
+                                           │
+ /api/flow ◀─── POST (signed call) ─────── runs your code one step at a time,
+           ──── step result ─────────────▶ saves each result, retries failures
+```
+
+- Your app **serves one endpoint**, for example `/api/flow`. The engine calls it to
+  run your code. Every call is signed, and the SDK checks the signature.
+- After each deploy, your app **syncs**: it sends the list of its functions to the
+  engine.
+- **Events** start runs. An event has a name, like `user/signed-up`, and some data.
+  Every function whose trigger matches the name gets a run.
+- A function is made of **steps**. The engine saves each step's result. If a step
+  fails, only that step is tried again. A run can sleep or wait for days.
+
+## 1. Get your keys
+
+You need the engine's URL (for example `https://worker.clevixstudio.com`) and an
+account on its dashboard.
+
+In the dashboard, open **Keys**:
+
+1. **Signing key.** Click **Create signing key**. It looks like
+   `signkey-` and 64 hex characters. Your app uses it to check that calls come from
+   the engine, and to prove who it is when it syncs. Every app on this engine uses
+   the same signing key.
+2. **Event key.** Type a name for the sender (for example `shop`) and click
+   **Create event key**. Anything that sends events needs one. Make one per
+   sender, so you can revoke one without cutting off the rest.
+
+Each key is shown **once**. Copy it into your secret store right away. Keys are
+secrets: never put them in code or in git.
+
+## 2. Install the SDK
+
+TypeScript (take the newest version from the
+[releases](https://github.com/eadwinCode/flow-sdk/releases)):
+
+```bash
+npm install https://github.com/eadwinCode/flow-sdk/releases/download/v0.2.0/clevix-flow-0.2.0.tgz
+```
+
+Go (needs Go 1.27+):
+
+```bash
+go get github.com/eadwinCode/flow-sdk@v0.2.0
+```
+
+## 3. Write a function
+
+This function sends a welcome email when a user signs up, waits a day, then sends
+a tip.
+
+TypeScript, on Cloudflare Workers (`src/index.ts`):
+
+```ts
+import { Flow } from "@clevix/flow";
+import { serve } from "@clevix/flow/cloudflare";
+
+// The app ID names this app on the engine. Keep it the same forever.
+const flow = new Flow({ id: "shop" });
+
+const welcome = flow.createFunction(
+  { id: "welcome-email" },
+  { event: "user/signed-up" },
+  async ({ event, step }) => {
+    const user = await step.run("load-user", () => loadUser(event.data.userId));
+    await step.run("send-welcome", () => sendEmail(user.email, "Welcome!"));
+    await step.sleep("wait-a-day", "1d");
+    await step.run("send-tip", () => sendEmail(user.email, "Here is a tip..."));
+    return { sent: 2 };
+  },
+);
+
+// One endpoint for all functions. On Workers this is the whole fetch handler;
+// to serve it on one path only, use the Hono adapter (see typescript.md).
+export default serve({ client: flow, functions: [welcome] });
+
+async function loadUser(id: string): Promise<{ email: string }> {
+  return { email: `${id}@example.com` }; // read your database here
+}
+async function sendEmail(to: string, text: string): Promise<void> {
+  // call your email provider here
+}
+```
+
+Go (`main.go`):
+
+```go
+package main
+
+import (
+	"context"
+	"log"
+	"net/http"
+	"time"
+
+	flow "github.com/eadwinCode/flow-sdk"
+	"github.com/eadwinCode/flow-sdk/step"
+)
+
+type SignedUp struct {
+	UserID string `json:"userId"`
+}
+
+func main() {
+	// The app ID names this app on the engine. Keep it the same forever.
+	client, err := flow.NewClient(flow.ClientOpts{AppID: "shop"})
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	_, err = flow.CreateFunction(client,
+		flow.FunctionOpts{ID: "welcome-email"},
+		flow.EventTrigger("user/signed-up", nil),
+		func(ctx context.Context, in flow.Input[SignedUp]) (any, error) {
+			email, err := step.Run(ctx, "load-user", func(ctx context.Context) (string, error) {
+				return loadEmail(ctx, in.Event.Data.UserID)
+			})
+			if err != nil {
+				return nil, err
+			}
+			if _, err := step.Run(ctx, "send-welcome", func(ctx context.Context) (bool, error) {
+				return true, sendEmail(ctx, email, "Welcome!")
+			}); err != nil {
+				return nil, err
+			}
+			if err := step.Sleep(ctx, "wait-a-day", 24*time.Hour); err != nil {
+				return nil, err
+			}
+			if _, err := step.Run(ctx, "send-tip", func(ctx context.Context) (bool, error) {
+				return true, sendEmail(ctx, email, "Here is a tip...")
+			}); err != nil {
+				return nil, err
+			}
+			return map[string]int{"sent": 2}, nil
+		},
+	)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	// One endpoint for all functions.
+	http.Handle("/api/flow", client.Serve())
+	log.Fatal(http.ListenAndServe(":8080", nil))
+}
+
+func loadEmail(ctx context.Context, userID string) (string, error) {
+	return userID + "@example.com", nil // read your database here
+}
+
+func sendEmail(ctx context.Context, to, text string) error {
+	return nil // call your email provider here
+}
+```
+
+Things to notice:
+
+- **Step IDs** (`"load-user"`, `"send-welcome"`, ...) name the steps. Keep them the
+  same between deploys: the engine finds saved results by ID.
+- **Code outside steps runs again** each time the engine calls your function. Put
+  anything with a side effect (email, payment, database write) inside a step.
+- A step's result is saved as JSON, so return plain data from it.
+
+[functions.md](functions.md) covers all the step types and options.
+
+## 4. Settings
+
+The SDK reads its settings from env vars. You can also pass them in code
+(`new Flow({ ... })` or `flow.ClientOpts{...}`); a value in code wins.
+
+| Env var | Needed for | What it is |
+| --- | --- | --- |
+| `FLOW_SIGNING_KEY` | always | The signing key from step 1. Secret. |
+| `FLOW_BASE_URL` | sync, sending events | The engine's URL, for example `https://worker.clevixstudio.com`. |
+| `FLOW_SERVE_URL` | sync, if the request URL is wrong | Your endpoint's public URL, with the path: `https://shop.example.com/api/flow`. |
+| `FLOW_EVENT_KEY` | sending events from this app | The event key from step 1. Secret. |
+| `FLOW_SIGNING_KEY_FALLBACK` | key rotation | The old signing key while you switch. Secret. |
+
+On Cloudflare Workers, put secrets in with wrangler and the rest in `vars`:
+
+```bash
+wrangler secret put FLOW_SIGNING_KEY
+wrangler secret put FLOW_EVENT_KEY
+```
+
+```jsonc
+// wrangler.jsonc
+"vars": {
+  "FLOW_BASE_URL": "https://worker.clevixstudio.com",
+  "FLOW_SERVE_URL": "https://shop.example.com/api/flow"
+}
+```
+
+On a server, set them as env vars the usual way (your host's secret settings,
+a `.env` loader, Kubernetes secrets, ...).
+
+## 5. Deploy and sync
+
+Deploy your app as you always do. The endpoint must be public and use `https`.
+
+Then **sync**: send a `PUT` to your own endpoint. The SDK sends your function list to
+the engine, signed with your signing key.
+
+```bash
+curl -X PUT https://shop.example.com/api/flow
+```
+
+A good answer is `200` with JSON that lists what changed, like
+`{"ok":true,"created":["welcome-email"],...}`. Sync again after **every deploy**, so
+the engine always has your current functions. The easiest way is a last step in
+your deploy script or CI job. [production.md](production.md) has an example.
+
+Open **Apps** in the dashboard: your app should be there with its functions.
+
+## 6. Send an event
+
+Send `user/signed-up` with your event key. With curl:
+
+```bash
+curl -X POST https://worker.clevixstudio.com/e \
+  -H "Authorization: Bearer $FLOW_EVENT_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "user/signed-up", "data": {"userId": "u_123"}}'
+```
+
+Or from your app, TypeScript:
+
+```ts
+// On Workers, pass the handler's env so the SDK finds FLOW_EVENT_KEY there:
+// await flow.send({ ... }, { env });
+await flow.send({ name: "user/signed-up", data: { userId: "u_123" } });
+```
+
+Go:
+
+```go
+id, err := client.Send(ctx, flow.Event{
+	Name: "user/signed-up",
+	Data: map[string]any{"userId": "u_123"},
+})
+if err != nil {
+	log.Printf("send failed: %v", err)
+} else {
+	log.Printf("sent event %s", id)
+}
+```
+
+The answer holds the new event's ID. [events.md](events.md) has the details.
+
+## 7. Watch it run
+
+Open **Runs** in the dashboard. You will see a run of `welcome-email`. Open it to
+see each step, its output, and the one-day sleep. The run page updates live.
+
+If the run fails, the run page shows the error and each attempt.
+[production.md](production.md#troubleshooting) lists common problems.
+
+## Working on your laptop
+
+The engine must be able to reach your endpoint over `https`, so it cannot call
+`http://localhost` directly. Use a tunnel, for example Cloudflare's:
+
+```bash
+cloudflared tunnel --url http://localhost:8080
+```
+
+It prints a public URL like `https://random-words.trycloudflare.com`. Then:
+
+1. Set `FLOW_SERVE_URL=https://random-words.trycloudflare.com/api/flow`, plus
+   `FLOW_SIGNING_KEY` and `FLOW_BASE_URL`, and start your app.
+2. Sync: `curl -X PUT http://localhost:8080/api/flow`.
+3. Send an event as in step 6.
+
+Use a **different app ID** on your laptop (for example `shop-dev-ada`), so your
+local functions do not replace the real app's functions on the engine.
+
+`FLOW_DEV=1` turns off signature checks in the SDK. Use it only when you run your
+own engine on your machine. Never set it on a public app: anyone could then call
+your functions.
+
+## Next
+
+- [functions.md](functions.md): triggers, steps, errors and retries, cancelling
+- [events.md](events.md): sending events, and what an event holds
+- [scheduling.md](scheduling.md): cron, sleeps and delayed runs
+- [flow-control.md](flow-control.md): concurrency, throttling, rate limits, debounce, batching
+- [production.md](production.md): syncing in CI, key rotation, limits, troubleshooting
+- [typescript.md](typescript.md) and [go.md](go.md): install, framework adapters, settings
