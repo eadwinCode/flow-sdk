@@ -1,6 +1,6 @@
 {
   "name": "@clevix/protocol",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "description": "clevix-worker wire protocol: shared types, request signing, IDs and durations.",
   "repository": {

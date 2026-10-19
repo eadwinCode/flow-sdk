@@ -15,7 +15,7 @@ Each release has the package as a `.tgz` file on its
 by URL. No npm account or login is needed.
 
 ```bash
-npm install https://github.com/eadwinCode/flow-sdk/releases/download/v0.2.0/clevix-flow-0.2.0.tgz
+npm install https://github.com/eadwinCode/flow-sdk/releases/download/v0.3.0/clevix-flow-0.3.0.tgz
 ```
 
 pnpm, yarn and bun take the same URL (`pnpm add <url>`, `yarn add <url>`,
@@ -23,15 +23,15 @@ pnpm, yarn and bun take the same URL (`pnpm add <url>`, `yarn add <url>`,
 
 ```json
 "dependencies": {
-  "@clevix/flow": "https://github.com/eadwinCode/flow-sdk/releases/download/v0.2.0/clevix-flow-0.2.0.tgz"
+  "@clevix/flow": "https://github.com/eadwinCode/flow-sdk/releases/download/v0.3.0/clevix-flow-0.3.0.tgz"
 }
 ```
 
 and you import from `@clevix/flow` as usual. The lockfile saves a hash of the
 file, so installs stay the same until you change the URL.
 
-To upgrade, put the new version in both places in the URL (`v0.2.0` and
-`clevix-flow-0.2.0.tgz`) and install again. `npm update` does not see new
+To upgrade, put the new version in both places in the URL (`v0.3.0` and
+`clevix-flow-0.3.0.tgz`) and install again. `npm update` does not see new
 versions of a URL install, and neither do Dependabot or Renovate, so watch the
 releases page (Watch → Custom → Releases on GitHub).
 
@@ -100,8 +100,9 @@ The signature is checked over the raw body, so the Express adapter must see the
 body as it came. It reads the body itself, or takes it from `express.raw()` or
 `express.text()`. If `express.json()` ran first, calls fail with a 500 that says so:
 mount the adapter before `express.json()`, or put `express.raw({ type: "*/*" })` on
-its path. The URL in the manifest uses `req.protocol` and the host, so behind a proxy
-set `app.set("trust proxy", ...)` or `FLOW_SERVE_URL`.
+its path. The URL a `PUT` sync sends uses `req.protocol` and the host, so behind a
+proxy set `app.set("trust proxy", ...)`. An app added by URL in the dashboard keeps
+that URL, whatever a sync says.
 
 ## Settings
 
@@ -109,14 +110,14 @@ Each setting can go in `new Flow({ ... })` or in an env var. A value in code win
 
 | Option | Env var | What it is for |
 | --- | --- | --- |
-| `signingKey` | `FLOW_SIGNING_KEY` | Checks that calls really come from the engine, and proves who you are when you sync. Required unless dev mode. Secret. |
-| `signingKeyFallback` | `FLOW_SIGNING_KEY_FALLBACK` | The old signing key while you swap keys. Secret. |
+| `signingKey` | `FLOW_SIGNING_KEY` | Your app's own signing key. Checks that calls really come from the engine, and proves who you are when you sync. Required unless dev mode. Secret. |
+| `signingKeyFallback` | `FLOW_SIGNING_KEY_FALLBACK` | The app's old signing key while you swap keys. Secret. |
 | `eventKey` | `FLOW_EVENT_KEY` | Lets `flow.send` send events. Only needed if this app sends events. Secret. |
-| `baseUrl` | `FLOW_BASE_URL` | The engine's URL. Needed for sync, `flow.send`, and big runs: when a run's state is over 4 MiB, the engine does not send it in the call, and the SDK loads it from the engine. |
-| `serveUrl` | `FLOW_SERVE_URL` | The public URL of this endpoint, with the path. If unset, taken from the request. |
+| `baseUrl` | `FLOW_BASE_URL` | The engine's URL, for sync, `flow.send`, and big runs (over 4 MiB the SDK loads the state from the engine). Default: `https://worker.clevixstudio.com` (`DEFAULT_BASE_URL`). Set it only if you run your own engine. |
 | `isDev` | `FLOW_DEV=1` | Turns off signature checks. For local work only, never on a public app. |
 
-Both keys come from the dashboard's Keys page. Each is shown once, when you make it.
+Both keys come from the dashboard's **Add app** dialog (the event key also from the
+Keys page). Each is shown once, when you make it.
 
 In code:
 
@@ -125,8 +126,7 @@ const flow = new Flow({
   id: "shop",
   signingKey: "signkey-...",   // better: read it from a secret, not a string in code
   eventKey: "...",
-  baseUrl: "https://worker.clevixstudio.com",
-  serveUrl: "https://shop.example.com/api/flow",
+  baseUrl: "https://flow.example.com", // only for your own engine
 });
 ```
 
@@ -138,13 +138,8 @@ wrangler secret put FLOW_SIGNING_KEY
 wrangler secret put FLOW_EVENT_KEY
 ```
 
-```jsonc
-// wrangler.jsonc
-"vars": {
-  "FLOW_BASE_URL": "https://worker.clevixstudio.com",
-  "FLOW_SERVE_URL": "https://shop.example.com/api/flow"
-}
-```
+Running your own engine? Put its URL in `vars` in `wrangler.jsonc`:
+`"vars": { "FLOW_BASE_URL": "https://flow.example.com" }`.
 
 Where each key is used:
 

@@ -14,11 +14,10 @@ engine.
 
 | Variable | Use |
 | --- | --- |
-| `FLOW_SIGNING_KEY` | `signkey-<64 hex>`. Checks calls from the engine, and signs sync. Required unless dev mode. |
+| `FLOW_SIGNING_KEY` | `signkey-<64 hex>`, the app's own key. Checks calls from the engine, and signs sync. Required unless dev mode. |
 | `FLOW_SIGNING_KEY_FALLBACK` | Old key while rotating. Calls signed with either key are accepted. |
 | `FLOW_EVENT_KEY` | Event key, for sending events. |
-| `FLOW_BASE_URL` | Engine URL, for example `https://worker.clevixstudio.com`. |
-| `FLOW_SERVE_URL` | Public URL of this app's endpoint, sent in the manifest. |
+| `FLOW_BASE_URL` | Engine URL. Default: `https://worker.clevixstudio.com`. |
 | `FLOW_DEV` | `1` turns off signature checks. Without it, the SDK refuses to serve with no signing key. |
 
 Options passed in code win over these.
@@ -31,7 +30,7 @@ An app serves one URL (for example `/api/flow`):
 | --- | --- |
 | `POST` | Run a function. Signed by the engine. |
 | `PUT` | Sync: the app sends its manifest to the engine (`PUT {base}/apps/{appId}/sync`) and returns the engine's answer. Call it on deploy (for example `curl -X PUT https://app/api/flow`). |
-| `GET` | Returns the manifest (`AppManifest`) as JSON. Requires a valid signature over the empty body (dev mode: none). |
+| `GET` | Returns the manifest (`AppManifest`) as JSON. Requires a valid signature over the empty body (dev mode: none). The engine calls it to add the app by URL, to resync it, and to ping it while it is down. |
 
 ### Signature check (POST and GET)
 
@@ -56,6 +55,11 @@ and an `AppManifest` body:
 }
 ```
 
+- `url` is this endpoint's URL as the request shows it (origin and path; there is no
+  setting for it). An app added by URL in the dashboard keeps that URL: the engine
+  uses the stored URL when the manifest's is not usable, and Add app, Resync and
+  pings always use the stored one.
+- The bearer must be the app's own signing key (403 for another app's key).
 - `appId` and function IDs match `^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$`.
 - Each function needs at least one trigger: `{ "event": "...", "if"?: "..." }` or `{ "cron": "..." }`.
 - Config keys use Inngest's names and shapes and are copied as given: `retries`,

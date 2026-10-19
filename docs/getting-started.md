@@ -8,7 +8,8 @@ TypeScript and Go side by side; use the one your app is written in.
 ```
  your app                                 the engine
  ────────                                 ──────────
- functions ──── PUT  (sync, on deploy) ──▶ knows your functions
+ /api/flow ◀─── GET  (Add app, Resync) ─── reads your functions
+           ──── PUT  (sync, on deploy) ──▶ (or your app sends them)
                                            │
  sender ─────── POST /e (an event) ──────▶ starts a run for each matching function
                                            │
@@ -17,31 +18,40 @@ TypeScript and Go side by side; use the one your app is written in.
 ```
 
 - Your app **serves one endpoint**, for example `/api/flow`. The engine calls it to
-  run your code. Every call is signed, and the SDK checks the signature.
-- After each deploy, your app **syncs**: it sends the list of its functions to the
-  engine.
+  run your code. Every call is signed with **your app's own signing key**, and the
+  SDK checks the signature.
+- You **add the app** in the dashboard by that endpoint's URL. The engine asks the
+  app for its functions. After a deploy, the app can also **sync** itself: it sends
+  the list of its functions to the engine.
 - **Events** start runs. An event has a name, like `user/signed-up`, and some data.
   Every function whose trigger matches the name gets a run.
 - A function is made of **steps**. The engine saves each step's result. If a step
   fails, only that step is tried again. A run can sleep or wait for days.
 
-## 1. Get your keys
+## 1. Get your app's keys
 
-You need the engine's URL (for example `https://worker.clevixstudio.com`) and an
-account on its dashboard.
+You need an account on the engine's dashboard. The SDK talks to
+`https://worker.clevixstudio.com` unless you set `FLOW_BASE_URL` (you run your own
+engine).
 
-In the dashboard, open **Keys**:
+In the dashboard, open **Apps** and click **Add app**:
 
-1. **Signing key.** Click **Create signing key**. It looks like
-   `signkey-` and 64 hex characters. Your app uses it to check that calls come from
-   the engine, and to prove who it is when it syncs. Every app on this engine uses
-   the same signing key.
-2. **Event key.** Type a name for the sender (for example `shop`) and click
-   **Create event key**. Anything that sends events needs one. Make one per
-   sender, so you can revoke one without cutting off the rest.
+1. Type your **app ID**: the ID you give the app in its code (`new Flow({ id: "shop" })`
+   or `flow.ClientOpts{AppID: "shop"}`), for example `shop`.
+2. Tick **Also create an event key** if this app sends events.
+3. Click **Create key**. You get the app's **signing key** (`signkey-` and 64 hex
+   characters), and the event key if you asked. The app uses the signing key to
+   check that calls come from the engine, and to prove who it is when it syncs.
+   Each app has its own.
 
-Each key is shown **once**. Copy it into your secret store right away. Keys are
-secrets: never put them in code or in git.
+Each key is shown **once**. Copy it into your secret store right away (as
+`FLOW_SIGNING_KEY` and `FLOW_EVENT_KEY`, see step 4). Keys are secrets: never put
+them in code or in git. Then click **I put it in the app**: the dialog asks for your
+endpoint's URL. You can leave it open, or close it and come back after step 5
+(**Add app**, type the same app ID, **It has a key: connect**).
+
+Other senders (a backend, a script) get their own event key on the **Keys** page,
+one per sender, so you can revoke one without cutting off the rest.
 
 ## 2. Install the SDK
 
@@ -49,13 +59,13 @@ TypeScript (take the newest version from the
 [releases](https://github.com/eadwinCode/flow-sdk/releases)):
 
 ```bash
-npm install https://github.com/eadwinCode/flow-sdk/releases/download/v0.2.0/clevix-flow-0.2.0.tgz
+npm install https://github.com/eadwinCode/flow-sdk/releases/download/v0.3.0/clevix-flow-0.3.0.tgz
 ```
 
 Go (needs Go 1.27+):
 
 ```bash
-go get github.com/eadwinCode/flow-sdk@v0.2.0
+go get github.com/eadwinCode/flow-sdk@v0.3.0
 ```
 
 ## 3. Write a function
@@ -183,47 +193,49 @@ The SDK reads its settings from env vars. You can also pass them in code
 
 | Env var | Needed for | What it is |
 | --- | --- | --- |
-| `FLOW_SIGNING_KEY` | always | The signing key from step 1. Secret. |
-| `FLOW_BASE_URL` | sync, sending events | The engine's URL, for example `https://worker.clevixstudio.com`. |
-| `FLOW_SERVE_URL` | sync, if the request URL is wrong | Your endpoint's public URL, with the path: `https://shop.example.com/api/flow`. |
+| `FLOW_SIGNING_KEY` | always | Your app's signing key from step 1. Secret. |
 | `FLOW_EVENT_KEY` | sending events from this app | The event key from step 1. Secret. |
-| `FLOW_SIGNING_KEY_FALLBACK` | key rotation | The old signing key while you switch. Secret. |
+| `FLOW_SIGNING_KEY_FALLBACK` | key rotation | The app's old signing key while you switch. Secret. |
+| `FLOW_BASE_URL` | only if you run your own engine | The engine's URL. Default: `https://worker.clevixstudio.com`. |
 
-On Cloudflare Workers, put secrets in with wrangler and the rest in `vars`:
+On Cloudflare Workers, put secrets in with wrangler:
 
 ```bash
 wrangler secret put FLOW_SIGNING_KEY
 wrangler secret put FLOW_EVENT_KEY
 ```
 
-```jsonc
-// wrangler.jsonc
-"vars": {
-  "FLOW_BASE_URL": "https://worker.clevixstudio.com",
-  "FLOW_SERVE_URL": "https://shop.example.com/api/flow"
-}
-```
+Running your own engine? Add its URL to `vars` in `wrangler.jsonc`:
+`"vars": { "FLOW_BASE_URL": "https://flow.example.com" }`.
 
 On a server, set them as env vars the usual way (your host's secret settings,
 a `.env` loader, Kubernetes secrets, ...).
 
-## 5. Deploy and sync
+## 5. Deploy and connect
 
-Deploy your app as you always do. The endpoint must be public and use `https`.
+Deploy your app as you always do, with its `FLOW_SIGNING_KEY`. The endpoint must be
+public and use `https`.
 
-Then **sync**: send a `PUT` to your own endpoint. The SDK sends your function list to
-the engine, signed with your signing key.
+Then, in the **Add app** dialog, type the endpoint's URL with its path (for example
+`https://shop.example.com/api/flow`) and click **Connect**. The engine calls it with
+a `GET`, signed with your app's key, and reads your functions. Your app shows on the
+**Apps** page as **Live**, with its functions.
+
+If it fails (the app is not deployed yet, or it has another key), the app is still
+added, as **Down**, with the error. Fix it and click **Retry**, or **Resync** on the
+Apps page later.
+
+After **every deploy** the engine must learn your new functions. Click **Resync** on
+the Apps page, or let the app sync itself: send a `PUT` to your own endpoint, and
+the SDK sends your function list to the engine, signed with your app's key.
 
 ```bash
 curl -X PUT https://shop.example.com/api/flow
 ```
 
 A good answer is `200` with JSON that lists what changed, like
-`{"ok":true,"created":["welcome-email"],...}`. Sync again after **every deploy**, so
-the engine always has your current functions. The easiest way is a last step in
-your deploy script or CI job. [production.md](production.md) has an example.
-
-Open **Apps** in the dashboard: your app should be there with its functions.
+`{"ok":true,"modified":["shop-welcome-email"],...}`. The easiest way is a last step
+in your deploy script or CI job. [production.md](production.md) has an example.
 
 ## 6. Send an event
 
@@ -279,13 +291,17 @@ cloudflared tunnel --url http://localhost:8080
 
 It prints a public URL like `https://random-words.trycloudflare.com`. Then:
 
-1. Set `FLOW_SERVE_URL=https://random-words.trycloudflare.com/api/flow`, plus
-   `FLOW_SIGNING_KEY` and `FLOW_BASE_URL`, and start your app.
-2. Sync: `curl -X PUT http://localhost:8080/api/flow`.
-3. Send an event as in step 6.
+1. Add the app in the dashboard with a **different app ID** (for example
+   `shop-dev-ada`), so your local functions do not replace the real app's functions
+   on the engine. Use that ID in your code too.
+2. Set `FLOW_SIGNING_KEY` to that app's key and start your app.
+3. Connect it with the tunnel URL and the path:
+   `https://random-words.trycloudflare.com/api/flow`.
+4. Send an event as in step 6.
 
-Use a **different app ID** on your laptop (for example `shop-dev-ada`), so your
-local functions do not replace the real app's functions on the engine.
+Each time the tunnel gives you a new URL, add the app again with the new URL (same
+app ID, **It has a key: connect**). A `PUT` sync sends the URL of the request it
+gets, so to sync with `curl` use the tunnel URL, not `localhost`.
 
 `FLOW_DEV=1` turns off signature checks in the SDK. Use it only when you run your
 own engine on your machine. Never set it on a public app: anyone could then call

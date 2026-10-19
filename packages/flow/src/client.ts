@@ -6,6 +6,8 @@ import type { FlowFunction, FunctionOptions, Handler, Trigger } from "./types.ts
 const ID_RE = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/;
 const FAILURE_SUFFIX = "-failure";
 export const FAILURE_EVENT = "inngest/function.failed";
+/** The engine's URL when neither `baseUrl` nor FLOW_BASE_URL is set. Self-hosters set FLOW_BASE_URL. */
+export const DEFAULT_BASE_URL = "https://worker.clevixstudio.com";
 
 export interface FlowOptions {
   /** The app's ID. */
@@ -13,10 +15,8 @@ export interface FlowOptions {
   signingKey?: string;
   signingKeyFallback?: string;
   eventKey?: string;
-  /** Engine URL, e.g. "https://worker.clevixstudio.com". */
+  /** Engine URL. Default: FLOW_BASE_URL, else "https://worker.clevixstudio.com". */
   baseUrl?: string;
-  /** Public URL of this app's endpoint, sent in the manifest. */
-  serveUrl?: string;
   /** Turns off signature checks. For local development only. */
   isDev?: boolean;
   fetch?: typeof fetch;
@@ -28,8 +28,7 @@ export interface FlowSettings {
   signingKey?: string;
   signingKeyFallback?: string;
   eventKey?: string;
-  baseUrl?: string;
-  serveUrl?: string;
+  baseUrl: string;
   isDev: boolean;
   fetch: typeof fetch;
 }
@@ -69,8 +68,8 @@ export class Flow {
       signingKey: o.signingKey ?? read("FLOW_SIGNING_KEY"),
       signingKeyFallback: o.signingKeyFallback ?? read("FLOW_SIGNING_KEY_FALLBACK"),
       eventKey: o.eventKey ?? read("FLOW_EVENT_KEY"),
-      baseUrl: o.baseUrl ?? read("FLOW_BASE_URL"),
-      serveUrl: o.serveUrl ?? read("FLOW_SERVE_URL"),
+      // An empty option counts as not set, like an empty env var (same as the Go SDK).
+      baseUrl: o.baseUrl || read("FLOW_BASE_URL") || DEFAULT_BASE_URL,
       isDev: o.isDev ?? read("FLOW_DEV") === "1",
       // Wrapped: on Workers, calling a detached `fetch` throws "Illegal invocation".
       fetch: o.fetch ?? ((input, init) => fetch(input, init)),
@@ -124,7 +123,6 @@ export class Flow {
     options: { env?: FlowEnv } = {},
   ): Promise<{ ids: string[]; status: number }> {
     const s = this.settings(options.env);
-    if (!s.baseUrl) throw new Error("flow.send needs the engine URL (baseUrl or FLOW_BASE_URL)");
     if (!s.eventKey) throw new Error("flow.send needs an event key (eventKey or FLOW_EVENT_KEY)");
     const response = await s.fetch(`${trimSlash(s.baseUrl)}/e`, {
       method: "POST",

@@ -45,8 +45,9 @@ with that `id`, the `name`, `data`, `ts` and `user`.
 
 ## Send events from your app
 
-You need `FLOW_BASE_URL` and an event key in `FLOW_EVENT_KEY` (see
-[getting-started.md](getting-started.md#1-get-your-keys)).
+You need an event key in `FLOW_EVENT_KEY` (see
+[getting-started.md](getting-started.md#1-get-your-apps-keys)), and `FLOW_BASE_URL` only if
+you run your own engine.
 
 TypeScript: `flow.send` takes one event or a list.
 

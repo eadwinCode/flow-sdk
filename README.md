@@ -17,7 +17,7 @@ The API follows Inngest (`inngestgo` for Go, `inngest` for TypeScript).
 ## Guides
 
 New here? Start with **[Getting started](docs/getting-started.md)**: keys, install,
-your first function, deploy, sync, and your first event.
+add your app, your first function, deploy, connect, and your first event.
 
 | Guide | What is in it |
 | --- | --- |
@@ -97,7 +97,7 @@ Take the `.tgz` link from the newest
 [release](https://github.com/eadwinCode/flow-sdk/releases):
 
 ```bash
-npm install https://github.com/eadwinCode/flow-sdk/releases/download/v0.2.0/clevix-flow-0.2.0.tgz
+npm install https://github.com/eadwinCode/flow-sdk/releases/download/v0.3.0/clevix-flow-0.3.0.tgz
 ```
 
 ```ts
@@ -128,11 +128,10 @@ Both SDKs read the same env vars. Values passed in code win.
 
 | Variable | Use |
 | --- | --- |
-| `FLOW_SIGNING_KEY` | Checks calls from the engine and signs sync. Required unless dev mode. |
-| `FLOW_SIGNING_KEY_FALLBACK` | The old key while you rotate. |
+| `FLOW_SIGNING_KEY` | Your app's own signing key, from **Add app** in the dashboard. Checks calls from the engine and signs sync. Required unless dev mode. |
+| `FLOW_SIGNING_KEY_FALLBACK` | The app's old key while you rotate it. |
 | `FLOW_EVENT_KEY` | For sending events from your app. |
-| `FLOW_BASE_URL` | The engine's URL. Needed for sync, sending events, and runs over 4 MiB. |
-| `FLOW_SERVE_URL` | The public URL of your endpoint. |
+| `FLOW_BASE_URL` | The engine's URL. Default: `https://worker.clevixstudio.com`. Set it only if you run your own engine. |
 | `FLOW_DEV` | `1` turns off signature checks. For local work only. |
 
 ## Versions

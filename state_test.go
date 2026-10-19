@@ -121,7 +121,6 @@ func TestUseAPIFailures(t *testing.T) {
 	cases := []struct {
 		name    string
 		handler http.HandlerFunc
-		noBase  bool
 		noKey   bool
 	}{
 		{name: "401", handler: func(w http.ResponseWriter, r *http.Request) {
@@ -138,14 +137,12 @@ func TestUseAPIFailures(t *testing.T) {
 			w.WriteHeader(503)
 		}},
 		{name: "network error"},
-		{name: "no base url", noBase: true},
 		{name: "no signing key", noKey: true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			opts := ClientOpts{}
 			switch {
-			case tc.noBase:
 			case tc.handler == nil:
 				srv := httptest.NewServer(http.NotFoundHandler())
 				u := srv.URL
