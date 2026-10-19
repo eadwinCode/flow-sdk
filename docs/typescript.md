@@ -1,5 +1,9 @@
 # TypeScript SDK (`@clevix/flow`)
 
+> This page is the TypeScript reference: install, setup and settings. For how to
+> use the features (steps, events, cron, flow control), read the
+> [guides](README.md), starting with [getting started](getting-started.md).
+
 The TypeScript SDK for clevix-worker. Your app defines functions made of steps. The
 engine runs them, saves each step's result, and retries steps that fail. The API
 follows Inngest's `inngest` package.

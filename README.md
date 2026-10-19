@@ -14,6 +14,23 @@ in the other language.
 
 The API follows Inngest (`inngestgo` for Go, `inngest` for TypeScript).
 
+## Guides
+
+New here? Start with **[Getting started](docs/getting-started.md)**: keys, install,
+your first function, deploy, sync, and your first event.
+
+| Guide | What is in it |
+| --- | --- |
+| [Getting started](docs/getting-started.md) | From nothing to a running function, and working on your laptop |
+| [Functions and steps](docs/functions.md) | Triggers, steps (run, sleep, waitForEvent, sendEvent, invoke), parallel steps, errors and retries, cancelling, failure handlers, expressions |
+| [Events](docs/events.md) | What an event holds, sending from apps, functions and HTTP, sending once, delayed runs |
+| [Scheduling](docs/scheduling.md) | Cron triggers and time zones, sleeps, runs at a set time |
+| [Flow control](docs/flow-control.md) | Concurrency, throttle, rate limit, debounce, batching, priority, idempotency, singleton |
+| [Production](docs/production.md) | Syncing in CI, key rotation, the dashboard, limits, troubleshooting |
+| [TypeScript reference](docs/typescript.md) | Install, framework adapters (Workers, Hono, Next.js, Express), settings |
+| [Go reference](docs/go.md) | Install, the API, Go-specific notes |
+| [Protocol](docs/protocol.md) | How SDKs talk to the engine (for SDK authors) |
+
 ## How it fits together
 
 1. Your app defines functions with the SDK.
