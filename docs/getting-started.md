@@ -282,30 +282,9 @@ If the run fails, the run page shows the error and each attempt.
 
 ## Working on your laptop
 
-The engine must be able to reach your endpoint over `https`, so it cannot call
-`http://localhost` directly. Use a tunnel, for example Cloudflare's:
-
-```bash
-cloudflared tunnel --url http://localhost:8080
-```
-
-It prints a public URL like `https://random-words.trycloudflare.com`. Then:
-
-1. Add the app in the dashboard with a **different app ID** (for example
-   `shop-dev-ada`), so your local functions do not replace the real app's functions
-   on the engine. Use that ID in your code too.
-2. Set `FLOW_SIGNING_KEY` to that app's key and start your app.
-3. Connect it with the tunnel URL and the path:
-   `https://random-words.trycloudflare.com/api/flow`.
-4. Send an event as in step 6.
-
-Each time the tunnel gives you a new URL, add the app again with the new URL (same
-app ID, **It has a key: connect**). A `PUT` sync sends the URL of the request it
-gets, so to sync with `curl` use the tunnel URL, not `localhost`.
-
-`FLOW_DEV=1` turns off signature checks in the SDK. Use it only when you run your
-own engine on your machine. Never set it on a public app: anyone could then call
-your functions.
+Run your app on your laptop against **a local engine** (the whole engine on your
+machine: no tunnel, no `https`, plain `http://127.0.0.1`), or against the **hosted
+engine through a tunnel**. [local-dev.md](local-dev.md) covers both.
 
 ## Next
 
@@ -313,5 +292,6 @@ your functions.
 - [events.md](events.md): sending events, and what an event holds
 - [scheduling.md](scheduling.md): cron, sleeps and delayed runs
 - [flow-control.md](flow-control.md): concurrency, throttling, rate limits, debounce, batching
+- [local-dev.md](local-dev.md): a local engine on your machine, or a tunnel
 - [production.md](production.md): syncing in CI, key rotation, limits, troubleshooting
 - [typescript.md](typescript.md) and [go.md](go.md): install, framework adapters, settings

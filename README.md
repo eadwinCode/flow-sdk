@@ -27,6 +27,7 @@ add your app, your first function, deploy, connect, and your first event.
 | [Scheduling](docs/scheduling.md) | Cron triggers and time zones, sleeps, runs at a set time |
 | [Flow control](docs/flow-control.md) | Concurrency, throttle, rate limit, debounce, batching, priority, idempotency, singleton |
 | [Realtime](docs/realtime.md) | Live messages from functions to the browser: publish, tokens, subscribe, the React hook |
+| [Local development](docs/local-dev.md) | A local engine on your machine (Docker or `bun run dev`), pointing your app at it, or the hosted engine through a tunnel |
 | [Production](docs/production.md) | Syncing in CI, key rotation, the dashboard, limits, troubleshooting |
 | [TypeScript reference](docs/typescript.md) | Install, framework adapters (Workers, Hono, Next.js, Express), settings |
 | [Go reference](docs/go.md) | Install, the API, Go-specific notes |
