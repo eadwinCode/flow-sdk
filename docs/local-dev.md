@@ -108,7 +108,9 @@ curl -X PUT http://127.0.0.1:<port>/api/flow -H "Host: <service>:<port>"   # sam
 
 A plain `curl -X PUT http://127.0.0.1:<port>/...` under Docker would save
 `127.0.0.1` as the app's URL. That is the engine's own container, so every step call
-then fails. Send the `PUT` again with the right `Host` to fix it. (Both SDKs build the
+then fails. To fix it, use **Change URL** on the app in the dashboard (it checks that
+the app answers at the new URL before it saves it), or send the `PUT` again with the
+right `Host`. (Both SDKs build the
 URL from the request's host; a server that does not pass the `Host` header on can use
 **Resync** instead, which keeps the saved URL.)
 
@@ -186,7 +188,8 @@ It prints a public URL like `https://random-words.trycloudflare.com`. Then:
    `https://random-words.trycloudflare.com/api/flow`.
 4. Send an event as in [Getting started](getting-started.md#6-send-an-event).
 
-Each time the tunnel gives you a new URL, sync with a `PUT` through the new URL
+Each time the tunnel gives you a new URL, use **Change URL** on the app in the
+dashboard, or sync with a `PUT` through the new URL
 (`curl -X PUT https://<new tunnel URL>/api/flow`): a `PUT` sync saves the URL of the
 request it gets as the app's URL, so use the tunnel URL, not `localhost`.
 
@@ -206,7 +209,7 @@ could then call your functions.
 | `docker run` says `denied` or `unauthorized` | You are not logged in to `ghcr.io`, or your token has no `read:packages`, or no access to the package. |
 | Add app says `app url must be https` | The engine was started some other way than `bun run dev`, the image, or `pnpm dev` in the engine's `workers/engine` (only those allow plain `http`). Or the host is not allowed: these allow `localhost` and `127.0.0.1`; add others with `FLOW_ALLOW_HTTP_HOSTS` (the image allows any host). |
 | Add app says the app does not answer | The engine cannot reach the URL you typed. From inside Docker, `localhost` is the container itself: use `host.docker.internal` (on Linux, with `--add-host`, and your app on `0.0.0.0`) or the compose service name. |
-| Steps fail after a `curl -X PUT` sync, and the app shows **Down** | Under Docker, a `PUT` saved `127.0.0.1` as the app's URL. Send it again with the engine's address in the `Host` header (see [syncing](#point-your-app-at-it)), or use **Resync**. |
+| Steps fail after a `curl -X PUT` sync, and the app shows **Down** | Under Docker, a `PUT` saved `127.0.0.1` as the app's URL. Use **Change URL** on the app with the right URL, or send the `PUT` again with the engine's address in the `Host` header (see [syncing](#point-your-app-at-it)). |
 | `401` from your app on every call | `FLOW_SIGNING_KEY` in your app is not the key you generated in the **local** dashboard (each engine has its own keys). |
 | Sending an event gives `401 invalid event key` | Use an event key from the local dashboard, and send it to `http://127.0.0.1:8787/e`, not the hosted engine. |
 | Runs stay **Queued** | The engine is not fully up yet, or it was started some other way than `bun run dev` or the image. They start the engine and its step worker together; started apart, steps are never sent. |
