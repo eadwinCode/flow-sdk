@@ -83,15 +83,14 @@ export function serve(options: ServeOptions): FetchHandler {
     const settings = client.settings(env && typeof env === "object" ? (env as FlowEnv) : undefined);
     const keyProblem = checkKeys(settings);
     if (keyProblem) return errorResponse(500, { name: "NoSigningKey", message: keyProblem });
+
     switch (request.method) {
       case "POST":
         return handleRun(request, settings, byId);
       case "GET": {
         const seal = await checkRequest(request, "", settings);
         if (!seal) return unauthorized();
-        const url = serveUrl(request, settings);
-        if (url === null) return seal(badServeUrl(settings));
-        return seal(json(buildManifest(client.id, url, functions)));
+        return seal(json(buildManifest(client.id, serveUrl(request), functions)));
       }
       case "PUT":
         return handleSync(request, settings, functions);
@@ -115,33 +114,6 @@ function checkKeys(s: FlowSettings): string | null {
     }
   }
   return null;
-}
-
-/**
- * The serve URL as origin and path, or null if it is not a full http or https URL,
- * or has a user, password, query or fragment (the engine compares host and path).
- */
-function cleanServeUrl(value: string): string | null {
-  let url: URL;
-  try {
-    url = new URL(value);
-  } catch {
-    return null;
-  }
-  if (url.protocol !== "http:" && url.protocol !== "https:") return null;
-  if (url.host === "" || url.username !== "" || url.password !== "" || url.search !== "" || url.hash !== "") return null;
-  return `${url.origin}${url.pathname}`;
-}
-
-/**
- * Answer to a GET or PUT when the serve URL is bad. POST does not use the serve URL,
- * so a bad one does not stop function runs.
- */
-function badServeUrl(s: FlowSettings): Response {
-  return errorResponse(500, {
-    name: "BadServeUrl",
-    message: `the serve URL "${s.serveUrl}" (FLOW_SERVE_URL) must be a full http or https URL with no user, query or fragment`,
-  });
 }
 
 /** Signs an answer (see `checkRequest`). */
@@ -180,15 +152,12 @@ function unauthorized(): Response {
 }
 
 /**
- * The URL sent in the manifest: `serveUrl` (FLOW_SERVE_URL) if set, else this
- * endpoint's URL as the request shows it (origin and path). It does not read
- * X-Forwarded-Host, since anyone can send it. An app added by URL in the dashboard
- * does not need it to sync: the engine keeps the URL it was given, and keeps a stored
- * URL when this one is not usable (an app behind a proxy may see itself as http).
- * Null: the serve URL is set but bad.
+ * This endpoint's URL as the request shows it (origin and path), sent in the manifest.
+ * An app added by URL in the dashboard does not need it: the engine keeps the URL it
+ * was given, and keeps a stored URL when this one is not usable (an app behind a proxy
+ * may see itself as http).
  */
-function serveUrl(request: Request, s: FlowSettings): string | null {
-  if (s.serveUrl) return cleanServeUrl(s.serveUrl);
+function serveUrl(request: Request): string {
   const url = new URL(request.url);
   return `${url.origin}${url.pathname}`;
 }
@@ -300,9 +269,7 @@ async function handleSync(request: Request, s: FlowSettings, functions: FlowFunc
   if (!s.signingKey) {
     return errorResponse(500, { name: "NoSigningKey", message: "sync needs a signing key: set FLOW_SIGNING_KEY" });
   }
-  const url = serveUrl(request, s);
-  if (url === null) return badServeUrl(s);
-  const manifest = buildManifest(s.appId, url, functions);
+  const manifest = buildManifest(s.appId, serveUrl(request), functions);
   let response: Response;
   try {
     response = await s.fetch(`${trimSlash(s.baseUrl)}/apps/${encodeURIComponent(s.appId)}/sync`, {

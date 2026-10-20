@@ -59,13 +59,13 @@ TypeScript (take the newest version from the
 [releases](https://github.com/eadwinCode/flow-sdk/releases)):
 
 ```bash
-npm install https://github.com/eadwinCode/flow-sdk/releases/download/v0.5.1/clevix-flow-0.5.1.tgz
+npm install https://github.com/eadwinCode/flow-sdk/releases/download/v0.5.0/clevix-flow-0.5.0.tgz
 ```
 
 Go (needs Go 1.27+):
 
 ```bash
-go get github.com/eadwinCode/flow-sdk@v0.5.1
+go get github.com/eadwinCode/flow-sdk@v0.5.0
 ```
 
 ## 3. Write a function
@@ -197,7 +197,6 @@ The SDK reads its settings from env vars. You can also pass them in code
 | `FLOW_EVENT_KEY` | sending events from this app | The event key from step 1. Secret. |
 | `FLOW_SIGNING_KEY_FALLBACK` | key rotation | The app's old signing key while you switch. Secret. |
 | `FLOW_BASE_URL` | only if you run your own engine | The engine's URL. Default: `https://worker.clevixstudio.com`. |
-| `FLOW_SERVE_URL` | only if a proxy changes the app's host or path | The app's public URL, as you type it in **Add app**. Used only in the manifest. |
 
 On Cloudflare Workers, put secrets in with wrangler:
 

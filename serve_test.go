@@ -37,7 +37,7 @@ func newClient(t *testing.T, opts ClientOpts) *Client {
 	if opts.SigningKeyFallback == nil {
 		opts.SigningKeyFallback = StrPtr("")
 	}
-	for _, p := range []**string{&opts.EventKey, &opts.BaseURL, &opts.ServeURL} {
+	for _, p := range []**string{&opts.EventKey, &opts.BaseURL} {
 		if *p == nil {
 			*p = StrPtr("")
 		}
@@ -685,34 +685,12 @@ func TestEnvVars(t *testing.T) {
 	if c.baseURL != DefaultBaseURL {
 		t.Fatalf("empty BaseURL: got %q", c.baseURL)
 	}
-	// Without FLOW_SERVE_URL the manifest URL is the request's, without the query.
-	// X-Forwarded-Host is not read: anyone can send it.
+	// FLOW_SERVE_URL is gone: the manifest URL is the request's.
+	t.Setenv("FLOW_SERVE_URL", "https://ignored.example.com/flow")
+	c, _ = NewClient(ClientOpts{AppID: "billing"})
 	r := httptest.NewRequest(http.MethodGet, "https://billing.example.com/api/flow?x=1", nil)
-	r.Header.Set("X-Forwarded-Host", "relay.example.com")
 	if got := c.serveURLFor(r); got != "https://billing.example.com/api/flow" {
 		t.Fatalf("serve URL: got %q", got)
-	}
-	t.Setenv("FLOW_SERVE_URL", "https://public.example.com/prod/flow")
-	c, _ = NewClient(ClientOpts{AppID: "billing"})
-	if got := c.serveURLFor(r); got != "https://public.example.com/prod/flow" {
-		t.Fatalf("FLOW_SERVE_URL: got %q", got)
-	}
-	c, _ = NewClient(ClientOpts{AppID: "billing", ServeURL: StrPtr("https://opt.example.com/flow")})
-	if got := c.serveURLFor(r); got != "https://opt.example.com/flow" {
-		t.Fatalf("ServeURL option must win over env: got %q", got)
-	}
-	c, _ = NewClient(ClientOpts{AppID: "billing", ServeURL: StrPtr("")})
-	if got := c.serveURLFor(r); got != "https://billing.example.com/api/flow" {
-		t.Fatalf("empty ServeURL counts as not set: got %q", got)
-	}
-	for _, bad := range []string{
-		"billing.example.com/flow", "/api/flow", "ftp://x.example.com/flow", "https://", "https:host/flow",
-		"https://u:p@billing.example.com/flow", "https://billing.example.com/flow?x=1", "https://billing.example.com/flow?",
-		"https://billing.example.com/flow#top",
-	} {
-		if _, err := NewClient(ClientOpts{AppID: "billing", ServeURL: StrPtr(bad)}); err == nil {
-			t.Fatalf("bad ServeURL %q accepted", bad)
-		}
 	}
 	if _, err := NewClient(ClientOpts{AppID: "billing", SigningKey: StrPtr("nope")}); err == nil {
 		t.Fatal("bad signing key accepted")
@@ -848,49 +826,6 @@ func TestPutSync(t *testing.T) {
 		`"},"functions":` + wantFunctions + `}`
 	if string(got.body) != want {
 		t.Fatalf("body =\n%s\nwant\n%s", got.body, want)
-	}
-}
-
-// ServeURL goes in the manifest of the signed GET answer and of the PUT sync,
-// in place of the URL the request shows (here a proxy changed host and path).
-func TestServeURLInManifest(t *testing.T) {
-	var synced []byte
-	engine := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		synced, _ = io.ReadAll(r.Body)
-		_, _ = w.Write([]byte(`{"ok":true}`))
-	}))
-	defer engine.Close()
-	const public = "https://public.example.com/prod/api/flow"
-	c := newClient(t, ClientOpts{BaseURL: StrPtr(engine.URL), ServeURL: StrPtr(public)})
-	testFunctions(t, c)
-
-	sig, _ := signRequest(testKey, nil, testNow)
-	a := send(t, c, http.MethodGet, nil, sig)
-	var m AppManifest
-	if err := json.Unmarshal(a.body, &m); err != nil || a.status != 200 || m.URL != public {
-		t.Fatalf("GET: %d %s", a.status, a.body)
-	}
-	if a.header.Get(core.HeaderAnswerSignature) == "" {
-		t.Fatal("GET answer is not signed")
-	}
-
-	if a := send(t, c, http.MethodPut, nil, ""); a.status != 200 {
-		t.Fatalf("PUT: %d %s", a.status, a.body)
-	}
-	if err := json.Unmarshal(synced, &m); err != nil || m.URL != public {
-		t.Fatalf("sync body = %s", synced)
-	}
-
-	// Client.Sync with no URL uses ServeURL.
-	synced = nil
-	if status, _, err := c.Sync(context.Background(), ""); err != nil || status != 200 {
-		t.Fatalf("Sync: %d %v", status, err)
-	}
-	if err := json.Unmarshal(synced, &m); err != nil || m.URL != public {
-		t.Fatalf("Sync body = %s", synced)
-	}
-	if _, _, err := newClient(t, ClientOpts{}).Sync(context.Background(), ""); err == nil {
-		t.Fatal("Sync with no URL and no ServeURL must fail")
 	}
 }
 

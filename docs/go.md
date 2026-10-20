@@ -25,7 +25,7 @@ import (
 )
 ```
 
-Pin a version with `@v0.5.1` in place of `@latest`. To upgrade, run `go get`
+Pin a version with `@v0.5.0` in place of `@latest`. To upgrade, run `go get`
 again with the new version, then `go mod tidy`. The versions are the
 [releases](https://github.com/eadwinCode/flow-sdk/releases).
 
@@ -105,7 +105,6 @@ Set these as environment variables, or in `flow.ClientOpts` (code wins).
 | `FLOW_SIGNING_KEY_FALLBACK` | The app's old key while rotating. |
 | `FLOW_EVENT_KEY` | For `client.Send` and `client.SendMany`. |
 | `FLOW_BASE_URL` | Engine URL. Default: `https://worker.clevixstudio.com` (`flow.DefaultBaseURL`). Set it only if you run your own engine. |
-| `FLOW_SERVE_URL` | Optional (`ClientOpts.ServeURL`). The app's public URL, used only as the `url` in the manifest. Set it when a proxy in front of the app changes the host or path, so Add app and Change URL accept the app. Default: the URL the request shows. See "Answer signature" in [protocol.md](protocol.md#answer-signature-sdk-v050-and-later). |
 | `FLOW_DEV` | `1` turns off signature checks. |
 
 Without a signing key, and not in dev mode, `Serve()` answers every request

@@ -18,7 +18,6 @@ engine.
 | `FLOW_SIGNING_KEY_FALLBACK` | Old key while rotating. Calls signed with either key are accepted. |
 | `FLOW_EVENT_KEY` | Event key, for sending events. |
 | `FLOW_BASE_URL` | Engine URL. Default: `https://worker.clevixstudio.com`. |
-| `FLOW_SERVE_URL` | Optional. The app's public URL, used only as the `url` in the manifest (GET answer and `PUT` sync). Default: the URL the request shows. See [Answer signature](#answer-signature-sdk-v050-and-later). |
 | `FLOW_DEV` | `1` turns off signature checks. Without it, the SDK refuses to serve with no signing key. |
 
 Options passed in code win over these.
@@ -68,6 +67,10 @@ app's unsigned answers, so a relay can not strip the header. A `PUT` sync from a
 older than v0.5.0 turns it off again (the app went back to an old SDK). An old engine
 ignores the header.
 
+So a rolling deploy to v0.5.0 or later is safe: while old and new copies of the app
+both answer, nothing is turned on, and the old copies' unsigned answers still work.
+When the deploy is done, press **Resync** once to turn it on.
+
 Going back to an SDK older than v0.5.0: send the app's `PUT` sync at once
 (`curl -X PUT https://app/api/flow`). Until then the engine refuses the app's
 unsigned answers, so steps that already ran may run again. **Resync** can not turn
@@ -79,30 +82,13 @@ sync said SDK v0.5.0 or later, even if the check is not on yet. So a relay can n
 strip the header and say the app runs an older SDK. The one case the engine can not
 catch is the very first Add app of a new app, when it knows nothing about it yet.
 
-So a rolling deploy to v0.5.0 or later is safe: while old and new copies of the app
-both answer, nothing is turned on, and the old copies' unsigned answers still work.
-When the deploy is done, press **Resync** once to turn it on.
-
-The signed manifest's `url` is the URL the app was called on, as it sees it, unless
-the app sets `FLOW_SERVE_URL` (below). When an admin types a URL (Add app, Change
-URL), the engine checks that its host and path are the same (not the scheme, so TLS
-may end at a proxy). A relay at another URL that passes the calls on to the real app
-fails this check. So the app must see its public host and path. A proxy in front of
-it should pass the `Host` header on (nginx: `proxy_set_header Host $host;`). The SDKs
-do not read `X-Forwarded-Host`, since anyone can send it (the Express adapter reads
-it only if you set `trust proxy`).
-
-If a proxy changes the host or the path and you can not change that (a Kubernetes
-ingress with `rewrite-target`, an API gateway stage prefix such as `/prod`, nginx
-without `proxy_set_header Host`), set the app's public URL in its own config:
-`FLOW_SERVE_URL` (SDK v0.5.1 and later; TypeScript `serveUrl`, Go `ClientOpts.ServeURL`), for example
-`https://billing.example.com/prod/api/flow`. The SDKs then put it as the manifest
-`url`, in the `GET` answer and in the `PUT` sync. It changes nothing else. Only the
-app's own config sets it, never a request, and the answer that carries it is signed
-with the app's key, so a relay can not fake it. Set it to the exact URL you type in
-the dashboard. It must be a full `http` or `https` URL with no user, password, query
-or fragment. If it is not, Go's `NewClient` fails, and the TypeScript SDK answers
-`GET` and `PUT` with `500 BadServeUrl` (function runs still work).
+The signed manifest's `url` is the URL the app was called on, as it sees it. When
+an admin types a URL (Add app, Change URL), the engine checks that its host and path
+are the same (not the scheme, so TLS may end at a proxy). A relay at another URL that
+passes the calls on to the real app fails this check. So the app must see its public
+host in the `Host` header: a proxy in front of it must pass it on (nginx:
+`proxy_set_header Host $host;`). The SDKs do not read `X-Forwarded-Host`, since
+anyone can send it (the Express adapter reads it only if you set `trust proxy`).
 
 ### Sync
 

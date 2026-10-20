@@ -1,21 +1,7 @@
 # Changelog
 
-## v0.5.1
+## Unreleased (docs only)
 
-- **`FLOW_SERVE_URL` is back, as an optional setting** (TypeScript `serveUrl` on
-  `new Flow({...})`, Go `ClientOpts.ServeURL`). It is the app's public URL, and it is
-  used only as the `url` in the manifest (the `GET` answer and the `PUT` sync). Set
-  it when a proxy in front of the app changes the host or the path (a Kubernetes
-  ingress with `rewrite-target`, an API gateway stage prefix, nginx without
-  `proxy_set_header Host`). With v0.5.0 such an app can not pass the Add app and
-  Change URL check, which compares the signed manifest `url` (host and path) to the
-  URL the admin typed. Only the app's own config sets it, and the answer is signed
-  with the app's key, so a relay can not fake it. When it is not set, nothing
-  changes: the SDKs send the URL the request shows, and still do not read
-  `X-Forwarded-Host`. A value that is not a full `http` or `https` URL, or that has
-  a user, password, query or fragment, is refused: Go's `NewClient` fails, and the
-  TypeScript SDK answers `GET` and `PUT` with `500 BadServeUrl` (function runs still
-  work). Go's `client.Sync(ctx, "")` now uses `ServeURL`.
 - **Docs fix for v0.5.0:** the engine turns on "answers must be signed" for an app
   only when an admin's **Add app**, **Resync** or **Change URL** gets a signed
   answer, never from a normal call or a `PUT` sync (eadwinCode/clevix-worker#43).
@@ -23,14 +9,14 @@
   the deploy runs. Press **Resync** once when the deploy is done. A `PUT` from an
   SDK older than v0.5.0 still turns it off. The v0.5.0 entry below said the first
   signed answer turned it on; that was wrong after the engine change.
-- **Docs: going back to an SDK older than v0.5.0.** Send the app's `PUT` sync at
-  once (`curl -X PUT https://app/api/flow`). Until then the engine refuses its
-  unsigned answers (steps that already ran may run again), and **Resync** can not
-  turn the check off. The engine may keep the old setting for up to 10 seconds.
-- **Docs:** Add app, Resync and Change URL also refuse an unsigned answer when the
-  app's last sync said SDK v0.5.0 or later, so a relay can not strip the header and
-  say the app runs an older SDK. The one case the engine can not catch is a new
-  app's very first Add app.
+- **Going back to an SDK older than v0.5.0:** send the app's `PUT` sync at once
+  (`curl -X PUT https://app/api/flow`). Until then the engine refuses its unsigned
+  answers (steps that already ran may run again), and **Resync** can not turn the
+  check off. The engine may keep the old setting for up to 10 seconds.
+- Add app, Resync and Change URL also refuse an unsigned answer when the app's last
+  sync said SDK v0.5.0 or later, so a relay can not strip the header and say the app
+  runs an older SDK. The one case the engine can not catch is a new app's very first
+  Add app.
 
 ## v0.5.0
 

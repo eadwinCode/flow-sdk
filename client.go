@@ -28,12 +28,6 @@ type ClientOpts struct {
 	EventKey *string
 	// BaseURL is the engine URL. Env: FLOW_BASE_URL. Default: DefaultBaseURL.
 	BaseURL *string
-	// ServeURL is this endpoint's public URL, for example
-	// "https://billing.example.com/api/flow". It is used only as the url in the
-	// manifest (the GET answer and the PUT sync). Set it when a proxy in front of
-	// the app changes the host or path, so the app does not see its public URL.
-	// Env: FLOW_SERVE_URL. Default: the URL the request shows.
-	ServeURL *string
 	// Dev turns off signature checks. Env: FLOW_DEV=1.
 	Dev *bool
 	// HTTPClient is used for sync and sending events. Default: http.DefaultClient.
@@ -47,7 +41,6 @@ type Client struct {
 	fallbackKey string
 	eventKey    string
 	baseURL     string
-	serveURL    string
 	dev         bool
 	http        *http.Client
 	now         func() time.Time
@@ -78,7 +71,6 @@ func NewClient(opts ClientOpts) (*Client, error) {
 		fallbackKey: pick(opts.SigningKeyFallback, "FLOW_SIGNING_KEY_FALLBACK"),
 		eventKey:    pick(opts.EventKey, "FLOW_EVENT_KEY"),
 		baseURL:     strings.TrimRight(pick(opts.BaseURL, "FLOW_BASE_URL"), "/"),
-		serveURL:    pick(opts.ServeURL, "FLOW_SERVE_URL"),
 		http:        opts.HTTPClient,
 		now:         time.Now,
 	}
@@ -90,15 +82,6 @@ func NewClient(opts ClientOpts) (*Client, error) {
 		c.dev = *opts.Dev
 	} else {
 		c.dev = os.Getenv("FLOW_DEV") == "1"
-	}
-	if c.serveURL != "" {
-		// The engine compares host and path, so keep only scheme, host and path.
-		u, err := url.Parse(c.serveURL)
-		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" ||
-			u.User != nil || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" {
-			return nil, fmt.Errorf("flow: the serve URL %q (FLOW_SERVE_URL) must be a full http or https URL with no user, query or fragment", c.serveURL)
-		}
-		c.serveURL = u.Scheme + "://" + u.Host + u.EscapedPath()
 	}
 	if c.http == nil {
 		c.http = http.DefaultClient
@@ -171,14 +154,10 @@ func (c *Client) Manifest(serveURL string) AppManifest {
 }
 
 // Sync sends the manifest to the engine (PUT {base}/apps/{appId}/sync) and
-// returns the engine's status code and body. An empty serveURL means ServeURL
-// (FLOW_SERVE_URL).
+// returns the engine's status code and body.
 func (c *Client) Sync(ctx context.Context, serveURL string) (int, []byte, error) {
 	if serveURL == "" {
-		serveURL = c.serveURL
-	}
-	if serveURL == "" {
-		return 0, nil, errors.New("flow: no serve URL: pass the URL of this app's endpoint, or set ServeURL")
+		return 0, nil, errors.New("flow: no serve URL: pass the URL of this app's endpoint")
 	}
 	body, err := json.Marshal(c.Manifest(serveURL))
 	if err != nil {
