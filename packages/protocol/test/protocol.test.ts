@@ -3,6 +3,7 @@ import {
   backoffMs,
   generateSigningKey,
   hashId,
+  matchSignature,
   parseBearer,
   parseDuration,
   parseSigningKey,
@@ -47,6 +48,13 @@ describe("signing", () => {
     const header = await signRequest(key, body, now);
     expect(await verifySignature({ header, body, keys: [key], nowSec: now + 301 })).toBe(false);
     expect(await verifySignature({ header, body, keys: [key], nowSec: now + 299 })).toBe(true);
+  });
+
+  it("says which key matched", async () => {
+    const newKey = generateSigningKey();
+    const header = await signRequest(key, body, now);
+    expect(await matchSignature({ header, body, keys: [newKey, key], nowSec: now })).toBe(key);
+    expect(await matchSignature({ header, body, keys: [newKey], nowSec: now })).toBeNull();
   });
 
   it("accepts the fallback key during rotation", async () => {

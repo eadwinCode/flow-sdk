@@ -5,7 +5,7 @@ the repo root) follow this page exactly, so the engine cannot tell them apart an
 TypeScript function can `step.invoke` a Go function. The wire types are in
 [`packages/protocol/src/types.ts`](../packages/protocol/src/types.ts); this page says how to use them.
 
-Test vectors for step IDs, signatures and the bearer token are in
+Test vectors for step IDs, signatures, answer signatures and the bearer token are in
 [`testdata/vectors.json`](../testdata/vectors.json). Both SDKs test against that file.
 The engine's conformance suite, in the engine repo, runs both SDKs against a real
 engine.
@@ -30,7 +30,7 @@ An app serves one URL (for example `/api/flow`):
 | --- | --- |
 | `POST` | Run a function. Signed by the engine. |
 | `PUT` | Sync: the app sends its manifest to the engine (`PUT {base}/apps/{appId}/sync`) and returns the engine's answer. Call it on deploy (for example `curl -X PUT https://app/api/flow`). |
-| `GET` | Returns the manifest (`AppManifest`) as JSON. Requires a valid signature over the empty body (dev mode: none). The engine calls it to add the app by URL, to resync it, and to ping it while it is down. |
+| `GET` | Returns the manifest (`AppManifest`) as JSON. Requires a valid signature over the empty body (dev mode: none). The engine calls it to add the app by URL, to resync it, to change its URL, and to ping it while it is down. |
 
 ### Signature check (POST and GET)
 
@@ -39,6 +39,39 @@ signing key minus its `signkey-` prefix, used as UTF-8 text, over
 `rawBody + t`. Reject (401, function does not run) if the header is missing, if
 `|now - t| > 300`, or if neither the key nor the fallback matches. Compare in constant
 time. Check the raw bytes as received, before parsing JSON.
+
+### Answer signature (SDK v0.5.0 and later)
+
+Every answer to a POST or GET that passed the signature check carries
+`X-Flow-Answer-Signature: s=<hex>`, whatever its status (200, 206, 400, 500). `s` is
+HMAC-SHA256, with the key that matched the request (the current key or the
+fallback), over these lines joined by `\n`:
+
+```
+flow-answer-v1
+<the s value of the request's X-Inngest-Signature>
+<HTTP status, for example 206>
+<the answer's X-Inngest-No-Retry value, or empty>
+<the answer's Retry-After value, or empty>
+<the raw body>
+```
+
+A 401 is not signed (no key matched). In dev mode an unsigned call is let in and
+its answer is not signed; a call signed with one of the app's keys gets a signed
+answer.
+
+The engine checks it. Once an app has sent one signed answer, the engine refuses its
+unsigned answers, so a relay can not strip the header. A `PUT` sync from an SDK older
+than v0.5.0 turns this off again (the app went back to an old SDK). An old engine
+ignores the header.
+
+The signed manifest's `url` is the URL the app was called on, as it sees it. When
+an admin types a URL (Add app, Change URL), the engine checks that its host and path
+are the same (not the scheme, so TLS may end at a proxy). A relay at another URL that
+passes the calls on to the real app fails this check. So the app must see its public
+host in the `Host` header: a proxy in front of it must pass it on (nginx:
+`proxy_set_header Host $host;`). The SDKs do not read `X-Forwarded-Host`, since
+anyone can send it (the Express adapter reads it only if you set `trust proxy`).
 
 ### Sync
 

@@ -1,5 +1,20 @@
 # Changelog
 
+## v0.5.0
+
+- **Signed answers.** Both SDKs sign every answer to a signed call (the manifest
+  `GET`, and every `POST` answer) with `X-Flow-Answer-Signature`, using the key that
+  passed the call. The engine checks it, so a relay at a wrong URL can not change a
+  manifest or a step result, and Add app and Change URL can check that the app is
+  really at the URL typed in. See "Answer signature" in
+  [docs/protocol.md](docs/protocol.md). Needs a proxy in front of the app to pass the
+  `Host` header on, for Add app and Change URL.
+  Works with older engines (they ignore the header). Once an engine has seen a
+  signed answer from an app, it refuses unsigned ones; to go back to an older SDK,
+  sync with `PUT` after the downgrade.
+- New in `@clevix/protocol`: `signAnswer`, `verifyAnswer`, `matchSignature`
+  (`verifySignature` that says which key matched), `HEADERS.answerSignature`.
+
 ## v0.4.0
 
 - **Realtime.** Functions send live messages to browsers:

@@ -30,6 +30,17 @@ type vectors struct {
 		SigningKey string `json:"signingKey"`
 		Bearer     string `json:"bearer"`
 	} `json:"bearer"`
+	Answers struct {
+		Cases []struct {
+			SigningKey string `json:"signingKey"`
+			Request    string `json:"request"`
+			Status     int    `json:"status"`
+			NoRetry    string `json:"noRetry"`
+			RetryAfter string `json:"retryAfter"`
+			Body       string `json:"body"`
+			Header     string `json:"header"`
+		} `json:"cases"`
+	} `json:"answers"`
 }
 
 func loadVectors(t *testing.T) vectors {
@@ -112,6 +123,22 @@ func TestVectorBearer(t *testing.T) {
 	}
 	if got != v.Bearer.Bearer {
 		t.Errorf("bearer = %s, want %s", got, v.Bearer.Bearer)
+	}
+}
+
+func TestVectorAnswers(t *testing.T) {
+	v := loadVectors(t)
+	if len(v.Answers.Cases) == 0 {
+		t.Fatal("no answer cases")
+	}
+	for _, c := range v.Answers.Cases {
+		got, err := signAnswer(c.SigningKey, c.Request, c.Status, c.NoRetry, c.RetryAfter, []byte(c.Body))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got != c.Header {
+			t.Errorf("signAnswer(%d %q) = %s, want %s", c.Status, c.Body, got, c.Header)
+		}
 	}
 }
 
