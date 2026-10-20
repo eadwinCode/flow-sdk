@@ -15,7 +15,7 @@ Each release has the package as a `.tgz` file on its
 by URL. No npm account or login is needed.
 
 ```bash
-npm install https://github.com/eadwinCode/flow-sdk/releases/download/v0.4.0/clevix-flow-0.4.0.tgz
+npm install https://github.com/eadwinCode/flow-sdk/releases/download/v0.5.0/clevix-flow-0.5.0.tgz
 ```
 
 pnpm, yarn and bun take the same URL (`pnpm add <url>`, `yarn add <url>`,
@@ -23,15 +23,15 @@ pnpm, yarn and bun take the same URL (`pnpm add <url>`, `yarn add <url>`,
 
 ```json
 "dependencies": {
-  "@clevix/flow": "https://github.com/eadwinCode/flow-sdk/releases/download/v0.4.0/clevix-flow-0.4.0.tgz"
+  "@clevix/flow": "https://github.com/eadwinCode/flow-sdk/releases/download/v0.5.0/clevix-flow-0.5.0.tgz"
 }
 ```
 
 and you import from `@clevix/flow` as usual. The lockfile saves a hash of the
 file, so installs stay the same until you change the URL.
 
-To upgrade, put the new version in both places in the URL (`v0.4.0` and
-`clevix-flow-0.4.0.tgz`) and install again. `npm update` does not see new
+To upgrade, put the new version in both places in the URL (`v0.5.0` and
+`clevix-flow-0.5.0.tgz`) and install again. `npm update` does not see new
 versions of a URL install, and neither do Dependabot or Renovate, so watch the
 releases page (Watch → Custom → Releases on GitHub).
 

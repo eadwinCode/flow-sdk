@@ -2,8 +2,10 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import {
   generateSigningKey,
+  signAnswer,
   signingKeyBearer,
   signRequest,
+  verifyAnswer,
   verifySignature,
   type FlowEvent,
   type InvokeRequest,
@@ -20,6 +22,17 @@ interface Vectors {
   stepIds: { cases: Array<{ id: string; occurrence: number; input: string; hashed: string }> };
   signatures: { cases: Array<{ signingKey: string; body: string; t: number; header: string }> };
   bearer: { signingKey: string; bearer: string };
+  answers: {
+    cases: Array<{
+      signingKey: string;
+      request: string;
+      status: number;
+      noRetry: string;
+      retryAfter: string;
+      body: string;
+      header: string;
+    }>;
+  };
 }
 
 const vectors = JSON.parse(
@@ -74,6 +87,15 @@ describe("conformance vectors", () => {
     for (const c of vectors.signatures.cases) {
       expect(await signRequest(c.signingKey, c.body, c.t)).toBe(c.header);
       expect(await verifySignature({ header: c.header, body: c.body, keys: [c.signingKey], nowSec: c.t })).toBe(true);
+    }
+  });
+
+  it("signs answers", async () => {
+    expect(vectors.answers.cases.length).toBeGreaterThan(0);
+    for (const c of vectors.answers.cases) {
+      expect(await signAnswer(c.signingKey, c)).toBe(c.header);
+      expect(await verifyAnswer({ ...c, header: c.header, key: c.signingKey })).toBe(true);
+      expect(await verifyAnswer({ ...c, body: c.body + " ", header: c.header, key: c.signingKey })).toBe(false);
     }
   });
 
@@ -713,5 +735,76 @@ describe("big state (useApi)", () => {
     expect(res.status).toBe(200);
     expect(await res.json()).toBe(7);
     expect(calls).toEqual([]);
+  });
+});
+
+describe("answer signature", () => {
+  async function check(res: Response, request: string, key = KEY): Promise<boolean> {
+    return verifyAnswer({
+      header: res.headers.get("X-Flow-Answer-Signature"),
+      key,
+      request,
+      status: res.status,
+      noRetry: res.headers.get("X-Inngest-No-Retry"),
+      retryAfter: res.headers.get("Retry-After"),
+      body: await res.clone().text(),
+    });
+  }
+
+  it("signs the manifest GET", async () => {
+    const { handle } = app(() => 1);
+    const request = await signRequest(KEY, "");
+    const res = await handle(new Request(URL_, { headers: { "X-Inngest-Signature": request } }));
+    expect(res.status).toBe(200);
+    expect(await check(res, request)).toBe(true);
+    // Another request's signature does not fit this answer.
+    expect(await check(res, await signRequest(KEY, "x"))).toBe(false);
+  });
+
+  it("signs POST answers: done, steps, and errors with their retry headers", async () => {
+    const flow = new Flow({ id: "shop", signingKey: KEY });
+    const fns = [
+      flow.createFunction({ id: "done" }, { event: "a/b" }, () => "ok"),
+      flow.createFunction({ id: "step" }, { event: "a/b" }, async ({ step }) => step.run("s", () => 1)),
+      flow.createFunction({ id: "fail" }, { event: "a/b" }, () => {
+        throw new NonRetriableError("no");
+      }),
+      flow.createFunction({ id: "later" }, { event: "a/b" }, () => {
+        throw new RetryAfterError("later", new Date(Date.now() + 60_000));
+      }),
+    ];
+    const handle = serve({ client: flow, functions: fns });
+    for (const fnId of ["done", "step", "fail", "later", "missing"]) {
+      const text = JSON.stringify(invoke(fnId));
+      const request = await signRequest(KEY, text);
+      const res = await handle(new Request(URL_, { method: "POST", headers: { "X-Inngest-Signature": request }, body: text }));
+      expect(await check(res, request), fnId).toBe(true);
+    }
+  });
+
+  it("signs with the key that matched (the fallback while rotating)", async () => {
+    const old = generateSigningKey();
+    const flow = new Flow({ id: "shop", signingKey: KEY, signingKeyFallback: old });
+    const handle = serve({ client: flow, functions: [] });
+    const request = await signRequest(old, "");
+    const res = await handle(new Request(URL_, { headers: { "X-Inngest-Signature": request } }));
+    expect(await check(res, request, old)).toBe(true);
+  });
+
+  it("does not sign a 401", async () => {
+    const { handle } = app(() => 1);
+    const res = await handle(new Request(URL_));
+    expect(res.status).toBe(401);
+    expect(res.headers.get("X-Flow-Answer-Signature")).toBeNull();
+  });
+
+  it("dev mode signs only signed calls", async () => {
+    const flow = new Flow({ id: "shop", signingKey: KEY, isDev: true });
+    const handle = serve({ client: flow, functions: [] });
+    const unsigned = await handle(new Request(URL_));
+    expect(unsigned.status).toBe(200);
+    expect(unsigned.headers.get("X-Flow-Answer-Signature")).toBeNull();
+    const request = await signRequest(KEY, "");
+    expect(await check(await handle(new Request(URL_, { headers: { "X-Inngest-Signature": request } })), request)).toBe(true);
   });
 });

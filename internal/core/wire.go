@@ -15,6 +15,8 @@ const (
 	HeaderSignature  = "X-Inngest-Signature"
 	HeaderNoRetry    = "X-Inngest-No-Retry"
 	HeaderRetryAfter = "Retry-After"
+	// HeaderAnswerSignature signs the app's answers (see signAnswer in the root package).
+	HeaderAnswerSignature = "X-Flow-Answer-Signature"
 )
 
 // HTTP status codes of the app endpoint (STATUS in types.ts).

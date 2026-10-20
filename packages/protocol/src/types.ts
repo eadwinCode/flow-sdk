@@ -191,6 +191,8 @@ export const HEADERS = {
   signature: "X-Inngest-Signature",
   noRetry: "X-Inngest-No-Retry",
   retryAfter: "Retry-After",
+  /** On the app's answers (SDK v0.5.0 and later). See signAnswer. */
+  answerSignature: "X-Flow-Answer-Signature",
 } as const;
 
 /**

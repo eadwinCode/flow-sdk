@@ -3,6 +3,7 @@
 //
 // Signing key format: `signkey-<64 hex chars>`.
 // Engine -> app:  X-Inngest-Signature: t=<unix seconds>&s=<hex HMAC-SHA256(secret, body + t)>
+// App -> engine answer: X-Flow-Answer-Signature: s=<hex HMAC-SHA256(secret, answerString)>
 // App -> engine:  Authorization: Bearer signkey-<hex sha256(secret bytes)>
 
 const encoder = new TextEncoder();
@@ -90,22 +91,74 @@ export async function verifySignature(opts: {
   nowSec?: number;
   toleranceSec?: number;
 }): Promise<boolean> {
-  if (!opts.header) return false;
+  return (await matchSignature(opts)) !== null;
+}
+
+/**
+ * Like `verifySignature`, but returns the key that matched (the first one, if both do),
+ * or null. The SDK signs its answer with that key.
+ */
+export async function matchSignature(opts: {
+  header: string | null | undefined;
+  body: string;
+  keys: Array<string | undefined>;
+  nowSec?: number;
+  toleranceSec?: number;
+}): Promise<string | null> {
+  if (!opts.header) return null;
   const params = new URLSearchParams(opts.header);
   const t = params.get("t");
   const s = params.get("s");
-  if (!t || !s || !/^\d+$/.test(t)) return false;
+  if (!t || !s || !/^\d+$/.test(t)) return null;
   const now = opts.nowSec ?? Math.floor(Date.now() / 1000);
-  if (Math.abs(now - Number(t)) > (opts.toleranceSec ?? SIGNATURE_TOLERANCE_SEC)) return false;
+  if (Math.abs(now - Number(t)) > (opts.toleranceSec ?? SIGNATURE_TOLERANCE_SEC)) return null;
 
-  let ok = false;
+  let matched: string | null = null;
   for (const key of opts.keys) {
     if (!key) continue;
     const { secret } = parseSigningKey(key);
     // Check every key so timing does not reveal which one matched.
-    if (timingSafeEqual(s, await hmacHex(secret, opts.body + t))) ok = true;
+    if (timingSafeEqual(s, await hmacHex(secret, opts.body + t)) && matched === null) matched = key;
   }
-  return ok;
+  return matched;
+}
+
+/**
+ * What an answer signature covers. `request` is the request's whole
+ * X-Inngest-Signature header; its `s` ties the answer to that one call.
+ * `noRetry` and `retryAfter` are the answer's X-Inngest-No-Retry and Retry-After
+ * headers (null or "" when not set): they change what the engine does.
+ */
+export interface AnswerParts {
+  request: string;
+  status: number;
+  noRetry?: string | null;
+  retryAfter?: string | null;
+  body: string;
+}
+
+function answerString(p: AnswerParts): string | null {
+  const s = new URLSearchParams(p.request).get("s");
+  if (!s) return null;
+  return ["flow-answer-v1", s, String(p.status), p.noRetry ?? "", p.retryAfter ?? "", p.body].join("\n");
+}
+
+/** X-Flow-Answer-Signature value for an answer, signed with the key that passed the request. */
+export async function signAnswer(signingKey: string, parts: AnswerParts): Promise<string> {
+  const { secret } = parseSigningKey(signingKey);
+  const message = answerString(parts);
+  if (message === null) throw new Error("the request signature has no s");
+  return `s=${await hmacHex(secret, message)}`;
+}
+
+/** Checks an X-Flow-Answer-Signature header, made with `key` (the key that signed the request). */
+export async function verifyAnswer(opts: AnswerParts & { header: string | null | undefined; key: string }): Promise<boolean> {
+  if (!opts.header) return false;
+  const s = new URLSearchParams(opts.header).get("s");
+  const message = answerString(opts);
+  if (!s || message === null) return false;
+  const { secret } = parseSigningKey(opts.key);
+  return timingSafeEqual(s, await hmacHex(secret, message));
 }
 
 /** The bearer token an app sends to the engine: a hash of the key's secret, never the key. */

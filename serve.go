@@ -69,24 +69,55 @@ func (c *Client) serveHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 // readSigned reads the raw body and checks its signature (skipped in dev mode).
-func (c *Client) readSigned(w http.ResponseWriter, r *http.Request) ([]byte, bool) {
+// On success it returns a writer to answer with: it signs the answer with the
+// key that matched (in dev mode, only when the request was signed with one of
+// the keys). Call its finish when the answer is written.
+func (c *Client) readSigned(w http.ResponseWriter, r *http.Request) ([]byte, *answerWriter, bool) {
 	body, err := io.ReadAll(io.LimitReader(r.Body, maxRequestBytes+1))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "BadRequest", "could not read the body")
-		return nil, false
+		return nil, nil, false
 	}
 	if len(body) > maxRequestBytes {
 		writeError(w, http.StatusRequestEntityTooLarge, "RequestTooLarge", "request body is too large")
-		return nil, false
+		return nil, nil, false
 	}
-	if c.dev {
-		return body, true
-	}
-	if !verifySignature(r.Header.Get(core.HeaderSignature), body, []string{c.signingKey, c.fallbackKey}, c.now()) {
+	header := r.Header.Get(core.HeaderSignature)
+	key := matchSignature(header, body, []string{c.signingKey, c.fallbackKey}, c.now())
+	if key == "" && !c.dev {
 		writeError(w, http.StatusUnauthorized, "Unauthorized", "missing or invalid signature")
-		return nil, false
+		return nil, nil, false
 	}
-	return body, true
+	return body, &answerWriter{w: w, key: key, request: header, status: http.StatusOK}, true
+}
+
+// answerWriter holds the answer until finish, then signs it (when it has a
+// key) and sends it.
+type answerWriter struct {
+	w       http.ResponseWriter
+	key     string
+	request string
+	status  int
+	body    []byte
+}
+
+func (a *answerWriter) Header() http.Header    { return a.w.Header() }
+func (a *answerWriter) WriteHeader(status int) { a.status = status }
+func (a *answerWriter) Write(b []byte) (int, error) {
+	a.body = append(a.body, b...)
+	return len(b), nil
+}
+
+func (a *answerWriter) finish() {
+	if a.key != "" {
+		h := a.w.Header()
+		sig, err := signAnswer(a.key, a.request, a.status, h.Get(core.HeaderNoRetry), h.Get(core.HeaderRetryAfter), a.body)
+		if err == nil {
+			h.Set(core.HeaderAnswerSignature, sig)
+		}
+	}
+	a.w.WriteHeader(a.status)
+	_, _ = a.w.Write(a.body)
 }
 
 // serveURLFor is the URL of this request (scheme, host and path), sent in the
@@ -101,10 +132,12 @@ func (c *Client) serveURLFor(r *http.Request) string {
 }
 
 func (c *Client) serveGet(w http.ResponseWriter, r *http.Request) {
-	if _, ok := c.readSigned(w, r); !ok {
+	_, aw, ok := c.readSigned(w, r)
+	if !ok {
 		return
 	}
-	writeJSON(w, http.StatusOK, c.Manifest(c.serveURLFor(r)))
+	writeJSON(aw, http.StatusOK, c.Manifest(c.serveURLFor(r)))
+	aw.finish()
 }
 
 func (c *Client) servePut(w http.ResponseWriter, r *http.Request) {
@@ -119,10 +152,16 @@ func (c *Client) servePut(w http.ResponseWriter, r *http.Request) {
 }
 
 func (c *Client) servePost(w http.ResponseWriter, r *http.Request) {
-	body, ok := c.readSigned(w, r)
+	body, aw, ok := c.readSigned(w, r)
 	if !ok {
 		return
 	}
+	// Not deferred: after a panic nothing is sent, as before (net/http drops the connection).
+	c.run(aw, r, body)
+	aw.finish()
+}
+
+func (c *Client) run(w http.ResponseWriter, r *http.Request, body []byte) {
 	var req core.InvokeRequest
 	if err := json.Unmarshal(body, &req); err != nil {
 		writeError(w, http.StatusBadRequest, "BadRequest", "body is not a valid request: "+err.Error())

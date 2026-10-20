@@ -1,9 +1,10 @@
 import {
   HEADERS,
+  matchSignature,
   parseSigningKey,
+  signAnswer,
   signingKeyBearer,
   STATUS,
-  verifySignature,
   type AppManifest,
   type FunctionConfig,
   type FlowEvent,
@@ -21,6 +22,8 @@ import { SDK_VERSION } from "./version.ts";
 //   POST  run a function (signed by the engine)
 //   PUT   sync: send the manifest to the engine
 //   GET   the manifest (signed over the empty body)
+// Every answer to a POST or GET that passed the signature check is signed too
+// (X-Flow-Answer-Signature), so the engine knows it came from the app.
 
 export interface ServeOptions {
   client: Flow;
@@ -85,8 +88,9 @@ export function serve(options: ServeOptions): FetchHandler {
       case "POST":
         return handleRun(request, settings, byId);
       case "GET": {
-        if (!(await signed(request, "", settings))) return unauthorized();
-        return json(buildManifest(client.id, serveUrl(request), functions));
+        const seal = await checkRequest(request, "", settings);
+        if (!seal) return unauthorized();
+        return seal(json(buildManifest(client.id, serveUrl(request), functions)));
       }
       case "PUT":
         return handleSync(request, settings, functions);
@@ -112,13 +116,35 @@ function checkKeys(s: FlowSettings): string | null {
   return null;
 }
 
-async function signed(request: Request, body: string, s: FlowSettings): Promise<boolean> {
-  if (s.isDev) return true;
-  return verifySignature({
-    header: request.headers.get(HEADERS.signature),
-    body,
-    keys: [s.signingKey, s.signingKeyFallback],
-  });
+/** Signs an answer (see `checkRequest`). */
+type Seal = (response: Response) => Promise<Response>;
+
+/**
+ * Checks the request's signature. Null: refuse it (401). Otherwise, the function that
+ * signs the answer with the key that matched. Dev mode lets every request in; it signs
+ * the answer only when the request was signed with one of its keys.
+ */
+async function checkRequest(request: Request, body: string, s: FlowSettings): Promise<Seal | null> {
+  const header = request.headers.get(HEADERS.signature);
+  const key = await matchSignature({ header, body, keys: [s.signingKey, s.signingKeyFallback] });
+  if (key === null || header === null) return s.isDev ? async (response) => response : null;
+  return (response) => sealAnswer(response, key, header);
+}
+
+async function sealAnswer(response: Response, key: string, request: string): Promise<Response> {
+  const body = await response.text();
+  const headers = new Headers(response.headers);
+  headers.set(
+    HEADERS.answerSignature,
+    await signAnswer(key, {
+      request,
+      status: response.status,
+      noRetry: headers.get(HEADERS.noRetry),
+      retryAfter: headers.get(HEADERS.retryAfter),
+      body,
+    }),
+  );
+  return new Response(body, { status: response.status, headers });
 }
 
 function unauthorized(): Response {
@@ -139,7 +165,12 @@ function serveUrl(request: Request): string {
 async function handleRun(request: Request, s: FlowSettings, byId: Map<string, FlowFunction>): Promise<Response> {
   // Check the raw bytes as received, before parsing.
   const body = await request.text();
-  if (!(await signed(request, body, s))) return unauthorized();
+  const seal = await checkRequest(request, body, s);
+  if (!seal) return unauthorized();
+  return seal(await run(body, s, byId));
+}
+
+async function run(body: string, s: FlowSettings, byId: Map<string, FlowFunction>): Promise<Response> {
   let invoke: InvokeRequest;
   try {
     invoke = JSON.parse(body) as InvokeRequest;
