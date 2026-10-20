@@ -116,7 +116,13 @@ export async function matchSignature(opts: {
   let matched: string | null = null;
   for (const key of opts.keys) {
     if (!key) continue;
-    const { secret } = parseSigningKey(key);
+    // A key in a bad format matches nothing (as in Go); the SDK refuses such keys before this.
+    let secret: string;
+    try {
+      ({ secret } = parseSigningKey(key));
+    } catch {
+      continue;
+    }
     // Check every key so timing does not reveal which one matched.
     if (timingSafeEqual(s, await hmacHex(secret, opts.body + t)) && matched === null) matched = key;
   }

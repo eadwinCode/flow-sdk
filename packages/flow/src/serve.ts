@@ -201,8 +201,13 @@ async function run(body: string, s: FlowSettings, byId: Map<string, FlowFunction
   }
 
   const result = await execute(fn, invoke);
-  if (result.type === "done") return json(result.output, STATUS.done);
-  if (result.type === "ops") return json(result.ops, STATUS.ops);
+  try {
+    if (result.type === "done") return json(result.output, STATUS.done);
+    if (result.type === "ops") return json(result.ops, STATUS.ops);
+  } catch (err) {
+    // JSON.stringify threw (a BigInt, a loop): answer a 500 the engine can read, as Go does.
+    return errorResponse(500, { name: "SerializationError", message: err instanceof Error ? err.message : String(err) });
+  }
   const headers: Record<string, string> = {};
   if (result.noRetry) headers[HEADERS.noRetry] = "true";
   if (result.retryAt !== undefined) {

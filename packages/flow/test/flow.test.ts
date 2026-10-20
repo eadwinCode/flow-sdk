@@ -791,6 +791,24 @@ describe("answer signature", () => {
     expect(await check(res, request, old)).toBe(true);
   });
 
+  it("signs a 500 when the output can not be made JSON", async () => {
+    const flow = new Flow({ id: "shop", signingKey: KEY });
+    const handle = serve({ client: flow, functions: [flow.createFunction({ id: "big" }, { event: "a/b" }, () => ({ n: 1n }))] });
+    const text = JSON.stringify(invoke("big"));
+    const request = await signRequest(KEY, text);
+    const res = await handle(new Request(URL_, { method: "POST", headers: { "X-Inngest-Signature": request }, body: text }));
+    expect(res.status).toBe(500);
+    expect(((await res.clone().json()) as { name: string }).name).toBe("SerializationError");
+    expect(await check(res, request)).toBe(true);
+  });
+
+  it("dev mode with a bad fallback key still takes signed calls", async () => {
+    const flow = new Flow({ id: "shop", signingKeyFallback: "junk", isDev: true });
+    const handle = serve({ client: flow, functions: [] });
+    const res = await handle(new Request(URL_, { headers: { "X-Inngest-Signature": await signRequest(KEY, "") } }));
+    expect(res.status).toBe(200);
+  });
+
   it("does not sign a 401", async () => {
     const { handle } = app(() => 1);
     const res = await handle(new Request(URL_));
