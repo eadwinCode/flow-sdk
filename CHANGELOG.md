@@ -1,5 +1,23 @@
 # Changelog
 
+## Unreleased (docs only)
+
+- **Docs fix for v0.5.0:** the engine turns on "answers must be signed" for an app
+  only when an admin's **Add app**, **Resync** or **Change URL** gets a signed
+  answer, never from a normal call or a `PUT` sync (eadwinCode/clevix-worker#43).
+  So a rolling deploy to v0.5.0 is safe: old copies of the app keep working while
+  the deploy runs. Press **Resync** once when the deploy is done. A `PUT` from an
+  SDK older than v0.5.0 still turns it off. The v0.5.0 entry below said the first
+  signed answer turned it on; that was wrong after the engine change.
+- **Going back to an SDK older than v0.5.0:** send the app's `PUT` sync at once
+  (`curl -X PUT https://app/api/flow`). Until then the engine refuses its unsigned
+  answers (steps that already ran may run again), and **Resync** can not turn the
+  check off. The engine may keep the old setting for up to 10 seconds.
+- Add app, Resync and Change URL also refuse an unsigned answer when the app's last
+  sync said SDK v0.5.0 or later, so a relay can not strip the header and say the app
+  runs an older SDK. The one case the engine can not catch is a new app's very first
+  Add app.
+
 ## v0.5.0
 
 - **Signed answers.** Both SDKs sign every answer to a signed call (the manifest

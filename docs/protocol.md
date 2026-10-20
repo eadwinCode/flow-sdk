@@ -60,10 +60,27 @@ A 401 is not signed (no key matched). In dev mode an unsigned call is let in and
 its answer is not signed; a call signed with one of the app's keys gets a signed
 answer.
 
-The engine checks it. Once an app has sent one signed answer, the engine refuses its
-unsigned answers, so a relay can not strip the header. A `PUT` sync from an SDK older
-than v0.5.0 turns this off again (the app went back to an old SDK). An old engine
+The engine checks it. It turns on "answers must be signed" for an app only when an
+admin's **Add app**, **Resync** or **Change URL** gets a signed answer from it. A
+normal call or a `PUT` sync never turns it on. Once it is on, the engine refuses the
+app's unsigned answers, so a relay can not strip the header. A `PUT` sync from an SDK
+older than v0.5.0 turns it off again (the app went back to an old SDK). An old engine
 ignores the header.
+
+So a rolling deploy to v0.5.0 or later is safe: while old and new copies of the app
+both answer, nothing is turned on, and the old copies' unsigned answers still work.
+When the deploy is done, press **Resync** once to turn it on.
+
+Going back to an SDK older than v0.5.0: send the app's `PUT` sync at once
+(`curl -X PUT https://app/api/flow`). Until then the engine refuses the app's
+unsigned answers, so steps that already ran may run again. **Resync** can not turn
+the check off. The engine may keep the old setting for up to 10 seconds after the
+`PUT`.
+
+Add app, Resync and Change URL also refuse an unsigned answer when the app's last
+sync said SDK v0.5.0 or later, even if the check is not on yet. So a relay can not
+strip the header and say the app runs an older SDK. The one case the engine can not
+catch is the very first Add app of a new app, when it knows nothing about it yet.
 
 The signed manifest's `url` is the URL the app was called on, as it sees it. When
 an admin types a URL (Add app, Change URL), the engine checks that its host and path
