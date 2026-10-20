@@ -89,8 +89,9 @@ without `proxy_set_header Host`), set the app's public URL in its own config:
 `url`, in the `GET` answer and in the `PUT` sync. It changes nothing else. Only the
 app's own config sets it, never a request, and the answer that carries it is signed
 with the app's key, so a relay can not fake it. Set it to the exact URL you type in
-the dashboard. It must be a full `http` or `https` URL, or the SDK refuses to serve
-(TypeScript: `500 BadServeUrl`; Go: `NewClient` fails).
+the dashboard. It must be a full `http` or `https` URL with no user, password, query
+or fragment. If it is not, Go's `NewClient` fails, and the TypeScript SDK answers
+`GET` and `PUT` with `500 BadServeUrl` (function runs still work).
 
 ### Sync
 

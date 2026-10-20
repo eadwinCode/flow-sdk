@@ -92,9 +92,13 @@ func NewClient(opts ClientOpts) (*Client, error) {
 		c.dev = os.Getenv("FLOW_DEV") == "1"
 	}
 	if c.serveURL != "" {
-		if u, err := url.Parse(c.serveURL); err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
-			return nil, fmt.Errorf("flow: the serve URL %q (FLOW_SERVE_URL) is not a full http or https URL", c.serveURL)
+		// The engine compares host and path, so keep only scheme, host and path.
+		u, err := url.Parse(c.serveURL)
+		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" ||
+			u.User != nil || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" {
+			return nil, fmt.Errorf("flow: the serve URL %q (FLOW_SERVE_URL) must be a full http or https URL with no user, query or fragment", c.serveURL)
 		}
+		c.serveURL = u.Scheme + "://" + u.Host + u.EscapedPath()
 	}
 	if c.http == nil {
 		c.http = http.DefaultClient
@@ -167,10 +171,14 @@ func (c *Client) Manifest(serveURL string) AppManifest {
 }
 
 // Sync sends the manifest to the engine (PUT {base}/apps/{appId}/sync) and
-// returns the engine's status code and body.
+// returns the engine's status code and body. An empty serveURL means ServeURL
+// (FLOW_SERVE_URL).
 func (c *Client) Sync(ctx context.Context, serveURL string) (int, []byte, error) {
 	if serveURL == "" {
-		return 0, nil, errors.New("flow: no serve URL: pass the URL of this app's endpoint")
+		serveURL = c.serveURL
+	}
+	if serveURL == "" {
+		return 0, nil, errors.New("flow: no serve URL: pass the URL of this app's endpoint, or set ServeURL")
 	}
 	body, err := json.Marshal(c.Manifest(serveURL))
 	if err != nil {

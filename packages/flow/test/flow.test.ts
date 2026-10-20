@@ -627,13 +627,38 @@ describe("serve URL", () => {
     expect(JSON.parse(bodies[0]!).url).toBe(PUBLIC);
   });
 
-  it("refuses a serve URL that is not a full http or https URL", async () => {
-    for (const bad of ["public.example.com/flow", "/api/flow", "ftp://x.example.com/flow"]) {
-      const handle = serve({ client: new Flow({ id: "shop", signingKey: KEY, serveUrl: bad }), functions: [] });
-      const res = await handle(new Request(URL_, { method: "PUT" }));
-      expect(res.status).toBe(500);
-      expect(await res.json()).toMatchObject({ name: "BadServeUrl" });
+  it("refuses a bad serve URL on GET and PUT", async () => {
+    const bad = [
+      "public.example.com/flow",
+      "/api/flow",
+      "ftp://x.example.com/flow",
+      "https://u:p@public.example.com/flow",
+      "https://public.example.com/flow?x=1",
+      "https://public.example.com/flow#top",
+    ];
+    for (const serveUrl of bad) {
+      const handle = serve({ client: new Flow({ id: "shop", signingKey: KEY, serveUrl }), functions: [] });
+      const put = await handle(new Request(URL_, { method: "PUT" }));
+      expect(put.status).toBe(500);
+      expect(await put.json()).toMatchObject({ name: "BadServeUrl" });
+      const get = await handle(new Request(URL_, { headers: { "X-Inngest-Signature": await signRequest(KEY, "") } }));
+      expect(get.status).toBe(500);
+      expect(get.headers.get("X-Flow-Answer-Signature")).not.toBeNull();
+      expect(await get.json()).toMatchObject({ name: "BadServeUrl" });
     }
+  });
+
+  it("sends the serve URL as origin and path", async () => {
+    const flow = new Flow({ id: "shop", signingKey: KEY, serveUrl: "https:Public.Example.com/prod/flow" });
+    const res = await serve({ client: flow, functions: [] })(new Request(URL_, { headers: { "X-Inngest-Signature": await signRequest(KEY, "") } }));
+    expect((await res.json()).url).toBe("https://public.example.com/prod/flow");
+  });
+
+  it("a bad serve URL does not stop function runs (POST does not use it)", async () => {
+    const flow = new Flow({ id: "shop", signingKey: KEY, serveUrl: "not a url" });
+    const fn = flow.createFunction({ id: "fn" }, { event: "user/signed-up" }, () => "ran");
+    const res = await post(serve({ client: flow, functions: [fn] }), invoke("fn"));
+    expect(res.status).toBe(200);
   });
 });
 

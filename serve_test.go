@@ -705,7 +705,11 @@ func TestEnvVars(t *testing.T) {
 	if got := c.serveURLFor(r); got != "https://billing.example.com/api/flow" {
 		t.Fatalf("empty ServeURL counts as not set: got %q", got)
 	}
-	for _, bad := range []string{"billing.example.com/flow", "/api/flow", "ftp://x.example.com/flow", "https://"} {
+	for _, bad := range []string{
+		"billing.example.com/flow", "/api/flow", "ftp://x.example.com/flow", "https://", "https:host/flow",
+		"https://u:p@billing.example.com/flow", "https://billing.example.com/flow?x=1", "https://billing.example.com/flow?",
+		"https://billing.example.com/flow#top",
+	} {
 		if _, err := NewClient(ClientOpts{AppID: "billing", ServeURL: StrPtr(bad)}); err == nil {
 			t.Fatalf("bad ServeURL %q accepted", bad)
 		}
@@ -875,6 +879,18 @@ func TestServeURLInManifest(t *testing.T) {
 	}
 	if err := json.Unmarshal(synced, &m); err != nil || m.URL != public {
 		t.Fatalf("sync body = %s", synced)
+	}
+
+	// Client.Sync with no URL uses ServeURL.
+	synced = nil
+	if status, _, err := c.Sync(context.Background(), ""); err != nil || status != 200 {
+		t.Fatalf("Sync: %d %v", status, err)
+	}
+	if err := json.Unmarshal(synced, &m); err != nil || m.URL != public {
+		t.Fatalf("Sync body = %s", synced)
+	}
+	if _, _, err := newClient(t, ClientOpts{}).Sync(context.Background(), ""); err == nil {
+		t.Fatal("Sync with no URL and no ServeURL must fail")
 	}
 }
 

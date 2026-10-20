@@ -12,8 +12,10 @@
   URL the admin typed. Only the app's own config sets it, and the answer is signed
   with the app's key, so a relay can not fake it. When it is not set, nothing
   changes: the SDKs send the URL the request shows, and still do not read
-  `X-Forwarded-Host`. A value that is not a full `http` or `https` URL is refused
-  (TypeScript: `500 BadServeUrl`; Go: `NewClient` fails).
+  `X-Forwarded-Host`. A value that is not a full `http` or `https` URL, or that has
+  a user, password, query or fragment, is refused: Go's `NewClient` fails, and the
+  TypeScript SDK answers `GET` and `PUT` with `500 BadServeUrl` (function runs still
+  work). Go's `client.Sync(ctx, "")` now uses `ServeURL`.
 - **Docs fix for v0.5.0:** the engine turns on "answers must be signed" for an app
   only when an admin's **Add app**, **Resync** or **Change URL** gets a signed
   answer, never from a normal call or a `PUT` sync (eadwinCode/clevix-worker#43).
