@@ -68,6 +68,17 @@ app's unsigned answers, so a relay can not strip the header. A `PUT` sync from a
 older than v0.5.0 turns it off again (the app went back to an old SDK). An old engine
 ignores the header.
 
+Going back to an SDK older than v0.5.0: send the app's `PUT` sync at once
+(`curl -X PUT https://app/api/flow`). Until then the engine refuses the app's
+unsigned answers, so steps that already ran may run again. **Resync** can not turn
+the check off. The engine may keep the old setting for up to 10 seconds after the
+`PUT`.
+
+Add app, Resync and Change URL also refuse an unsigned answer when the app's last
+sync said SDK v0.5.0 or later, even if the check is not on yet. So a relay can not
+strip the header and say the app runs an older SDK. The one case the engine can not
+catch is the very first Add app of a new app, when it knows nothing about it yet.
+
 So a rolling deploy to v0.5.0 or later is safe: while old and new copies of the app
 both answer, nothing is turned on, and the old copies' unsigned answers still work.
 When the deploy is done, press **Resync** once to turn it on.

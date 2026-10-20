@@ -164,7 +164,7 @@ even ones that never send events.
 | --- | --- |
 | `the app at this URL says it is at ...` | The app named another URL than the one you typed. Either something in between passes the calls on to it (use the app's own URL), or a proxy in front of the app changes the host or path. Make the proxy pass the `Host` header on (nginx: `proxy_set_header Host $host;`), or set `FLOW_SERVE_URL` in the app to the URL you typed. Express: set `trust proxy` only for your own proxy, since it makes the adapter read `X-Forwarded-Host`. |
 | `the answer's signature is wrong` | The answer was changed on the way, or the app at that URL has another signing key. |
-| `... signs its answers, but this answer is not signed` | Something in between took the `X-Flow-Answer-Signature` header off. If the app really went back to an SDK older than v0.5.0, sync it once with `PUT`. |
+| `... signs its answers, but this answer is not signed` | Something in between took the `X-Flow-Answer-Signature` header off. If the app really went back to an SDK older than v0.5.0, sync it with `PUT` at once (Resync can not fix this). |
 
 **An event starts no run**
 
