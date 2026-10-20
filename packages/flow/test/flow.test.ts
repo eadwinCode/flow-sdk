@@ -575,17 +575,65 @@ describe("engine URL", () => {
     expect(new Flow({ id: "a", baseUrl: "" }).settings({ FLOW_BASE_URL: "" }).baseUrl).toBe(DEFAULT_BASE_URL);
   });
 
-  it("PUT sync sends this endpoint's own URL (FLOW_SERVE_URL is gone)", async () => {
+  it("PUT sync sends this endpoint's own URL when FLOW_SERVE_URL is not set", async () => {
     const bodies: string[] = [];
     const mock = (async (_url: string, init: RequestInit) => {
       bodies.push(init.body as string);
       return Response.json({ ok: true });
     }) as unknown as typeof fetch;
     const flow = new Flow({ id: "shop", signingKey: KEY, fetch: mock });
-    await serve({ client: flow, functions: [] })(new Request("https://shop.example.com/api/flow?x=1", { method: "PUT" }), {
-      FLOW_SERVE_URL: "https://ignored.example.com/flow",
-    });
+    // X-Forwarded-Host is not read: anyone can send it.
+    const request = new Request("https://shop.example.com/api/flow?x=1", { method: "PUT", headers: { "X-Forwarded-Host": "relay.example.com" } });
+    await serve({ client: flow, functions: [] })(request, { FLOW_SERVE_URL: "" });
     expect(JSON.parse(bodies[0]!).url).toBe("https://shop.example.com/api/flow");
+  });
+});
+
+describe("serve URL", () => {
+  const PUBLIC = "https://public.example.com/prod/api/flow";
+
+  it("is the option, else FLOW_SERVE_URL, else not set", () => {
+    expect(new Flow({ id: "a" }).settings({}).serveUrl).toBeUndefined();
+    expect(new Flow({ id: "a" }).settings({ FLOW_SERVE_URL: PUBLIC }).serveUrl).toBe(PUBLIC);
+    expect(new Flow({ id: "a", serveUrl: "https://opt.example.com/flow" }).settings({ FLOW_SERVE_URL: PUBLIC }).serveUrl).toBe(
+      "https://opt.example.com/flow",
+    );
+    // Empty counts as not set, like in the Go SDK.
+    expect(new Flow({ id: "a", serveUrl: "" }).settings({ FLOW_SERVE_URL: "" }).serveUrl).toBeUndefined();
+  });
+
+  it("goes in the signed GET manifest and the PUT sync, in place of the request's URL", async () => {
+    const bodies: string[] = [];
+    const mock = (async (_url: string, init: RequestInit) => {
+      bodies.push(init.body as string);
+      return Response.json({ ok: true });
+    }) as unknown as typeof fetch;
+    const flow = new Flow({ id: "shop", signingKey: KEY, fetch: mock });
+    const handle = serve({ client: flow, functions: [] });
+    // A proxy changed the host and path: the app is called on an inside URL.
+    const inside = "http://shop.internal:8080/api/flow";
+    const env = { FLOW_SERVE_URL: PUBLIC };
+
+    const signature = await signRequest(KEY, "");
+    const res = await handle(new Request(inside, { headers: { "X-Inngest-Signature": signature } }), env);
+    expect(res.status).toBe(200);
+    const body = await res.text();
+    expect(JSON.parse(body).url).toBe(PUBLIC);
+    const answer = res.headers.get("X-Flow-Answer-Signature");
+    expect(answer).not.toBeNull();
+    expect(await verifyAnswer({ key: KEY, header: answer, request: signature, status: 200, noRetry: null, retryAfter: null, body })).toBe(true);
+
+    await handle(new Request(inside, { method: "PUT" }), env);
+    expect(JSON.parse(bodies[0]!).url).toBe(PUBLIC);
+  });
+
+  it("refuses a serve URL that is not a full http or https URL", async () => {
+    for (const bad of ["public.example.com/flow", "/api/flow", "ftp://x.example.com/flow"]) {
+      const handle = serve({ client: new Flow({ id: "shop", signingKey: KEY, serveUrl: bad }), functions: [] });
+      const res = await handle(new Request(URL_, { method: "PUT" }));
+      expect(res.status).toBe(500);
+      expect(await res.json()).toMatchObject({ name: "BadServeUrl" });
+    }
   });
 });
 

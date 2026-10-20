@@ -154,7 +154,7 @@ even ones that never send events.
 | `500 NoSigningKey` | The app is missing `FLOW_SIGNING_KEY`. |
 | `401 invalid signing key` | The key is wrong, revoked, or from another engine. |
 | `403 this signing key belongs to another app` | The app has another app's key. Each app needs its own (Add app). |
-| `400 app url must be https` | The sync sent the URL of the request it got, and it is not `https`. Send the `PUT` to the public `https` URL. Behind a proxy the request may look like `http`: add the app by URL in the dashboard, and the engine keeps that URL. |
+| `400 app url must be https` | The sync sent the URL of the request it got, and it is not `https`. Send the `PUT` to the public `https` URL. Behind a proxy the request may look like `http`: add the app by URL in the dashboard, and the engine keeps that URL, or set `FLOW_SERVE_URL` to the public URL. |
 | `400 function <id>: ...` | A bad option, cron or expression in that function. The message says which. |
 | `502 SyncFailed` | The app could not reach the engine. If you run your own engine, check `FLOW_BASE_URL`. |
 
@@ -162,7 +162,7 @@ even ones that never send events.
 
 | Message | Cause |
 | --- | --- |
-| `the app at this URL says it is at ...` | The app named another URL than the one you typed. Either something in between passes the calls on to it (use the app's own URL), or a proxy in front of the app does not pass the `Host` header on (nginx: `proxy_set_header Host $host;`). Express: set `trust proxy` only for your own proxy, since it makes the adapter read `X-Forwarded-Host`. |
+| `the app at this URL says it is at ...` | The app named another URL than the one you typed. Either something in between passes the calls on to it (use the app's own URL), or a proxy in front of the app changes the host or path. Make the proxy pass the `Host` header on (nginx: `proxy_set_header Host $host;`), or set `FLOW_SERVE_URL` in the app to the URL you typed. Express: set `trust proxy` only for your own proxy, since it makes the adapter read `X-Forwarded-Host`. |
 | `the answer's signature is wrong` | The answer was changed on the way, or the app at that URL has another signing key. |
 | `... signs its answers, but this answer is not signed` | Something in between took the `X-Flow-Answer-Signature` header off. If the app really went back to an SDK older than v0.5.0, sync it once with `PUT`. |
 
@@ -212,5 +212,7 @@ Read the [changelog](../CHANGELOG.md) first. Then:
 - TypeScript: change the version in both places of the `.tgz` URL and install.
 - Go: `go get github.com/eadwinCode/flow-sdk@vX.Y.Z` and `go mod tidy`.
 
-Deploy and sync as usual. If the changelog says a version needs a newer engine, the
+Deploy and sync as usual. After the first deploy of v0.5.0 or later, once every copy
+of the app runs it, press **Resync** once: that turns on the engine's check that the
+app's answers are signed. If the changelog says a version needs a newer engine, the
 engine must be updated first.

@@ -28,6 +28,12 @@ type ClientOpts struct {
 	EventKey *string
 	// BaseURL is the engine URL. Env: FLOW_BASE_URL. Default: DefaultBaseURL.
 	BaseURL *string
+	// ServeURL is this endpoint's public URL, for example
+	// "https://billing.example.com/api/flow". It is used only as the url in the
+	// manifest (the GET answer and the PUT sync). Set it when a proxy in front of
+	// the app changes the host or path, so the app does not see its public URL.
+	// Env: FLOW_SERVE_URL. Default: the URL the request shows.
+	ServeURL *string
 	// Dev turns off signature checks. Env: FLOW_DEV=1.
 	Dev *bool
 	// HTTPClient is used for sync and sending events. Default: http.DefaultClient.
@@ -41,6 +47,7 @@ type Client struct {
 	fallbackKey string
 	eventKey    string
 	baseURL     string
+	serveURL    string
 	dev         bool
 	http        *http.Client
 	now         func() time.Time
@@ -71,6 +78,7 @@ func NewClient(opts ClientOpts) (*Client, error) {
 		fallbackKey: pick(opts.SigningKeyFallback, "FLOW_SIGNING_KEY_FALLBACK"),
 		eventKey:    pick(opts.EventKey, "FLOW_EVENT_KEY"),
 		baseURL:     strings.TrimRight(pick(opts.BaseURL, "FLOW_BASE_URL"), "/"),
+		serveURL:    pick(opts.ServeURL, "FLOW_SERVE_URL"),
 		http:        opts.HTTPClient,
 		now:         time.Now,
 	}
@@ -82,6 +90,11 @@ func NewClient(opts ClientOpts) (*Client, error) {
 		c.dev = *opts.Dev
 	} else {
 		c.dev = os.Getenv("FLOW_DEV") == "1"
+	}
+	if c.serveURL != "" {
+		if u, err := url.Parse(c.serveURL); err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+			return nil, fmt.Errorf("flow: the serve URL %q (FLOW_SERVE_URL) is not a full http or https URL", c.serveURL)
+		}
 	}
 	if c.http == nil {
 		c.http = http.DefaultClient

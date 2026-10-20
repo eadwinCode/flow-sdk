@@ -1,6 +1,6 @@
 {
   "name": "@clevix/flow",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "private": true,
   "description": "TypeScript SDK for clevix-worker: durable functions made of steps.",
   "repository": {

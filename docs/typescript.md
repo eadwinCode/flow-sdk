@@ -15,7 +15,7 @@ Each release has the package as a `.tgz` file on its
 by URL. No npm account or login is needed.
 
 ```bash
-npm install https://github.com/eadwinCode/flow-sdk/releases/download/v0.5.0/clevix-flow-0.5.0.tgz
+npm install https://github.com/eadwinCode/flow-sdk/releases/download/v0.5.1/clevix-flow-0.5.1.tgz
 ```
 
 pnpm, yarn and bun take the same URL (`pnpm add <url>`, `yarn add <url>`,
@@ -23,15 +23,15 @@ pnpm, yarn and bun take the same URL (`pnpm add <url>`, `yarn add <url>`,
 
 ```json
 "dependencies": {
-  "@clevix/flow": "https://github.com/eadwinCode/flow-sdk/releases/download/v0.5.0/clevix-flow-0.5.0.tgz"
+  "@clevix/flow": "https://github.com/eadwinCode/flow-sdk/releases/download/v0.5.1/clevix-flow-0.5.1.tgz"
 }
 ```
 
 and you import from `@clevix/flow` as usual. The lockfile saves a hash of the
 file, so installs stay the same until you change the URL.
 
-To upgrade, put the new version in both places in the URL (`v0.5.0` and
-`clevix-flow-0.5.0.tgz`) and install again. `npm update` does not see new
+To upgrade, put the new version in both places in the URL (`v0.5.1` and
+`clevix-flow-0.5.1.tgz`) and install again. `npm update` does not see new
 versions of a URL install, and neither do Dependabot or Renovate, so watch the
 releases page (Watch → Custom → Releases on GitHub).
 
@@ -101,7 +101,7 @@ body as it came. It reads the body itself, or takes it from `express.raw()` or
 `express.text()`. If `express.json()` ran first, calls fail with a 500 that says so:
 mount the adapter before `express.json()`, or put `express.raw({ type: "*/*" })` on
 its path. The URL a `PUT` sync sends uses `req.protocol` and the host, so behind a
-proxy set `app.set("trust proxy", ...)`. An app added by URL in the dashboard keeps
+proxy set `app.set("trust proxy", ...)`, or set `serveUrl`. An app added by URL in the dashboard keeps
 that URL, whatever a sync says.
 
 ## Settings
@@ -114,6 +114,7 @@ Each setting can go in `new Flow({ ... })` or in an env var. A value in code win
 | `signingKeyFallback` | `FLOW_SIGNING_KEY_FALLBACK` | The app's old signing key while you swap keys. Secret. |
 | `eventKey` | `FLOW_EVENT_KEY` | Lets `flow.send` send events. Only needed if this app sends events. Secret. |
 | `baseUrl` | `FLOW_BASE_URL` | The engine's URL, for sync, `flow.send`, and big runs (over 4 MiB the SDK loads the state from the engine). Default: `https://worker.clevixstudio.com` (`DEFAULT_BASE_URL`). Set it only if you run your own engine. |
+| `serveUrl` | `FLOW_SERVE_URL` | Optional. The app's public URL, for example `https://shop.example.com/api/flow`, used only as the `url` in the manifest. Set it when a proxy in front of the app changes the host or path, so Add app and Change URL accept the app. Default: the URL the request shows. See "Answer signature" in [protocol.md](protocol.md#answer-signature-sdk-v050-and-later). |
 | `isDev` | `FLOW_DEV=1` | Turns off signature checks. For local work only, never on a public app. |
 
 Both keys come from the dashboard's **Add app** dialog (the event key also from the

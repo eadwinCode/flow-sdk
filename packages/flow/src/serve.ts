@@ -83,6 +83,13 @@ export function serve(options: ServeOptions): FetchHandler {
     const settings = client.settings(env && typeof env === "object" ? (env as FlowEnv) : undefined);
     const keyProblem = checkKeys(settings);
     if (keyProblem) return errorResponse(500, { name: "NoSigningKey", message: keyProblem });
+    // Refuse a bad serve URL at once, so the mistake does not show only at Add app.
+    if (settings.serveUrl && !isFullUrl(settings.serveUrl)) {
+      return errorResponse(500, {
+        name: "BadServeUrl",
+        message: `the serve URL "${settings.serveUrl}" (FLOW_SERVE_URL) is not a full http or https URL`,
+      });
+    }
 
     switch (request.method) {
       case "POST":
@@ -90,7 +97,7 @@ export function serve(options: ServeOptions): FetchHandler {
       case "GET": {
         const seal = await checkRequest(request, "", settings);
         if (!seal) return unauthorized();
-        return seal(json(buildManifest(client.id, serveUrl(request), functions)));
+        return seal(json(buildManifest(client.id, serveUrl(request, settings), functions)));
       }
       case "PUT":
         return handleSync(request, settings, functions);
@@ -114,6 +121,15 @@ function checkKeys(s: FlowSettings): string | null {
     }
   }
   return null;
+}
+
+function isFullUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return (url.protocol === "http:" || url.protocol === "https:") && url.host !== "";
+  } catch {
+    return false;
+  }
 }
 
 /** Signs an answer (see `checkRequest`). */
@@ -152,12 +168,14 @@ function unauthorized(): Response {
 }
 
 /**
- * This endpoint's URL as the request shows it (origin and path), sent in the manifest.
- * An app added by URL in the dashboard does not need it: the engine keeps the URL it
- * was given, and keeps a stored URL when this one is not usable (an app behind a proxy
- * may see itself as http).
+ * The URL sent in the manifest: `serveUrl` (FLOW_SERVE_URL) if set, else this
+ * endpoint's URL as the request shows it (origin and path). It does not read
+ * X-Forwarded-Host, since anyone can send it. An app added by URL in the dashboard
+ * does not need it to sync: the engine keeps the URL it was given, and keeps a stored
+ * URL when this one is not usable (an app behind a proxy may see itself as http).
  */
-function serveUrl(request: Request): string {
+function serveUrl(request: Request, s: FlowSettings): string {
+  if (s.serveUrl) return s.serveUrl;
   const url = new URL(request.url);
   return `${url.origin}${url.pathname}`;
 }
@@ -269,7 +287,7 @@ async function handleSync(request: Request, s: FlowSettings, functions: FlowFunc
   if (!s.signingKey) {
     return errorResponse(500, { name: "NoSigningKey", message: "sync needs a signing key: set FLOW_SIGNING_KEY" });
   }
-  const manifest = buildManifest(s.appId, serveUrl(request), functions);
+  const manifest = buildManifest(s.appId, serveUrl(request, s), functions);
   let response: Response;
   try {
     response = await s.fetch(`${trimSlash(s.baseUrl)}/apps/${encodeURIComponent(s.appId)}/sync`, {

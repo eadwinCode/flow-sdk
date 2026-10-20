@@ -18,6 +18,13 @@ export interface FlowOptions {
   eventKey?: string;
   /** Engine URL. Default: FLOW_BASE_URL, else "https://worker.clevixstudio.com". */
   baseUrl?: string;
+  /**
+   * This endpoint's public URL, for example "https://billing.example.com/api/flow".
+   * Used only as the `url` in the manifest (the GET answer and the PUT sync). Set it
+   * when a proxy in front of the app changes the host or path. Default:
+   * FLOW_SERVE_URL, else the URL the request shows.
+   */
+  serveUrl?: string;
   /** Turns off signature checks. For local development only. */
   isDev?: boolean;
   fetch?: typeof fetch;
@@ -30,6 +37,7 @@ export interface FlowSettings {
   signingKeyFallback?: string;
   eventKey?: string;
   baseUrl: string;
+  serveUrl?: string;
   isDev: boolean;
   fetch: typeof fetch;
 }
@@ -71,6 +79,7 @@ export class Flow {
       eventKey: o.eventKey ?? read("FLOW_EVENT_KEY"),
       // An empty option counts as not set, like an empty env var (same as the Go SDK).
       baseUrl: o.baseUrl || read("FLOW_BASE_URL") || DEFAULT_BASE_URL,
+      serveUrl: o.serveUrl || read("FLOW_SERVE_URL") || undefined,
       isDev: o.isDev ?? read("FLOW_DEV") === "1",
       // Wrapped: on Workers, calling a detached `fetch` throws "Illegal invocation".
       fetch: o.fetch ?? ((input, init) => fetch(input, init)),

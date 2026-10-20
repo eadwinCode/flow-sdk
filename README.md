@@ -99,7 +99,7 @@ Take the `.tgz` link from the newest
 [release](https://github.com/eadwinCode/flow-sdk/releases):
 
 ```bash
-npm install https://github.com/eadwinCode/flow-sdk/releases/download/v0.5.0/clevix-flow-0.5.0.tgz
+npm install https://github.com/eadwinCode/flow-sdk/releases/download/v0.5.1/clevix-flow-0.5.1.tgz
 ```
 
 ```ts
@@ -134,6 +134,7 @@ Both SDKs read the same env vars. Values passed in code win.
 | `FLOW_SIGNING_KEY_FALLBACK` | The app's old key while you rotate it. |
 | `FLOW_EVENT_KEY` | For sending events from your app. |
 | `FLOW_BASE_URL` | The engine's URL. Default: `https://worker.clevixstudio.com`. Set it only if you run your own engine. |
+| `FLOW_SERVE_URL` | Optional. The app's public URL, used only in the manifest. Set it only if a proxy in front of the app changes the host or path. |
 | `FLOW_DEV` | `1` turns off signature checks. For local work only. |
 
 ## Versions

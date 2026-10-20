@@ -1,5 +1,27 @@
 # Changelog
 
+## v0.5.1
+
+- **`FLOW_SERVE_URL` is back, as an optional setting** (TypeScript `serveUrl` on
+  `new Flow({...})`, Go `ClientOpts.ServeURL`). It is the app's public URL, and it is
+  used only as the `url` in the manifest (the `GET` answer and the `PUT` sync). Set
+  it when a proxy in front of the app changes the host or the path (a Kubernetes
+  ingress with `rewrite-target`, an API gateway stage prefix, nginx without
+  `proxy_set_header Host`). With v0.5.0 such an app can not pass the Add app and
+  Change URL check, which compares the signed manifest `url` (host and path) to the
+  URL the admin typed. Only the app's own config sets it, and the answer is signed
+  with the app's key, so a relay can not fake it. When it is not set, nothing
+  changes: the SDKs send the URL the request shows, and still do not read
+  `X-Forwarded-Host`. A value that is not a full `http` or `https` URL is refused
+  (TypeScript: `500 BadServeUrl`; Go: `NewClient` fails).
+- **Docs fix for v0.5.0:** the engine turns on "answers must be signed" for an app
+  only when an admin's **Add app**, **Resync** or **Change URL** gets a signed
+  answer, never from a normal call or a `PUT` sync (eadwinCode/clevix-worker#43).
+  So a rolling deploy to v0.5.0 is safe: old copies of the app keep working while
+  the deploy runs. Press **Resync** once when the deploy is done. A `PUT` from an
+  SDK older than v0.5.0 still turns it off. The v0.5.0 entry below said the first
+  signed answer turned it on; that was wrong after the engine change.
+
 ## v0.5.0
 
 - **Signed answers.** Both SDKs sign every answer to a signed call (the manifest

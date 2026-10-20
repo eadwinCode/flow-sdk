@@ -120,10 +120,15 @@ func (a *answerWriter) finish() {
 	_, _ = a.w.Write(a.body)
 }
 
-// serveURLFor is the URL of this request (scheme, host and path), sent in the
-// manifest. An app added by URL in the dashboard does not need it: the engine
-// keeps the URL it was given, and keeps a stored URL when this one is not usable.
+// serveURLFor is the URL sent in the manifest: ServeURL (FLOW_SERVE_URL) if set,
+// else the URL of this request (scheme, host and path). It does not read
+// X-Forwarded-Host, since anyone can send it. An app added by URL in the
+// dashboard does not need it to sync: the engine keeps the URL it was given, and
+// keeps a stored URL when this one is not usable.
 func (c *Client) serveURLFor(r *http.Request) string {
+	if c.serveURL != "" {
+		return c.serveURL
+	}
 	scheme := "http"
 	if r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https" {
 		scheme = "https"
