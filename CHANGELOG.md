@@ -1,5 +1,21 @@
 # Changelog
 
+## v0.6.0
+
+- **Streamed answers: long steps behind a proxy.** Cloudflare's proxy ends a call
+  that sends nothing for about 100 seconds (`524`), and nginx stops after 60. When
+  the engine asks (`X-Flow-Stream: 1`), both SDKs now answer `200` at once, send a
+  `\n` heartbeat every 20 seconds while the function runs, and send the real answer
+  (status, retry headers, signature, body) at the end. So a step can run up to its
+  step timeout behind a proxy or a tunnel. See "Streamed answers" in
+  [docs/protocol.md](docs/protocol.md). Works with older engines: they do not ask,
+  so the SDK answers as before.
+- New options: `serve({ ..., streaming: false | { heartbeatMs } })` (TypeScript),
+  `ClientOpts.NoStreaming` and `ClientOpts.HeartbeatInterval` (Go).
+- `@clevix/protocol`: `HEADERS.stream`, `streamedAnswerTail`, `parseStreamedAnswer`,
+  `STREAM_ANSWER_HEADERS`, `STREAM_HEARTBEAT`, `DEFAULT_HEARTBEAT_MS`.
+- The Express adapter now sends answers chunk by chunk instead of all at once.
+
 ## Unreleased (docs only)
 
 - **Docs fix for v0.5.0:** the engine turns on "answers must be signed" for an app

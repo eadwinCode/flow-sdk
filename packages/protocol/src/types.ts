@@ -193,6 +193,11 @@ export const HEADERS = {
   retryAfter: "Retry-After",
   /** On the app's answers (SDK v0.5.0 and later). See signAnswer. */
   answerSignature: "X-Flow-Answer-Signature",
+  /**
+   * SDK v0.6.0 and later. On a POST: the engine takes a streamed answer. On the answer:
+   * this answer is streamed. See stream.ts.
+   */
+  stream: "X-Flow-Stream",
 } as const;
 
 /**

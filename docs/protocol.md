@@ -90,6 +90,53 @@ host in the `Host` header: a proxy in front of it must pass it on (nginx:
 `proxy_set_header Host $host;`). The SDKs do not read `X-Forwarded-Host`, since
 anyone can send it (the Express adapter reads it only if you set `trust proxy`).
 
+### Streamed answers (SDK v0.6.0 and later)
+
+A proxy in front of the app ends a call that sends nothing for too long. Cloudflare
+answers `524` after about 100 seconds; nginx stops after 60 seconds by default. So
+without help, a step behind such a proxy must finish within that time.
+
+To beat this, the engine adds `X-Flow-Stream: 1` to every `POST`. When the SDK sees
+it, it answers like this:
+
+1. At once: status `200` with these headers:
+   - `X-Flow-Stream: 1`
+   - `Content-Type: text/plain; charset=utf-8`
+   - `Cache-Control: no-store, no-transform` (no compression on the way)
+   - `X-Accel-Buffering: no` (nginx sends the bytes on at once)
+2. A heartbeat, `\n`, right away and then every 20 seconds while the function runs.
+3. At the end, one **meta line** and the answer's raw body:
+
+```
+\n\n\n{"status":206,"noRetry":null,"retryAfter":null,"signature":"s=…"}
+[{"op":"StepCompleted",…}]
+```
+
+The meta line holds what a normal answer has in its status and headers: the real
+status (`200`, `206`, `500`, ...), `X-Inngest-No-Retry`, `Retry-After`, and the
+`X-Flow-Answer-Signature` value (`null` when the answer is not signed). The keys come
+in this order with no spaces. The body after it is byte for byte what a normal answer
+would have sent, and the signature is made exactly as above, over the real status,
+the retry values and that body. Heartbeats carry nothing and are not signed.
+
+Rules:
+
+- Only `\n` is a heartbeat. The meta line ends at the first `\n` after it.
+- A `401` (bad signature) and a `400` (bad request) are never streamed: they are
+  answered at once, as before.
+- In Go, an answer streams only when the server's writer can flush. Otherwise it is
+  sent whole, as before.
+- Apps can turn streaming off: `serve({ ..., streaming: false })` in TypeScript,
+  `ClientOpts{NoStreaming: true}` in Go. The heartbeat time can be changed with
+  `streaming: { heartbeatMs }` and `ClientOpts.HeartbeatInterval`.
+- An SDK older than v0.6.0 ignores the request header and answers as before. An
+  engine older than this never sends it, so the SDK answers as before.
+- If a proxy holds the whole answer back until the end (some do), it still works: the
+  engine just gets every byte at once.
+
+This lifts the proxy's limit, not the engine's: a step still ends at the function's
+step timeout (default 5 minutes, at most 14).
+
 ### Sync
 
 `PUT {FLOW_BASE_URL}/apps/{appId}/sync` with

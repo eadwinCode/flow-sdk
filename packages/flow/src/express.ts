@@ -86,9 +86,26 @@ function requestHeaders(req: ExpressRequest): Headers {
   return headers;
 }
 
+/** Sends the answer chunk by chunk, so a streamed answer's heartbeats go out as they come. */
 async function send(res: ServerResponse, response: Response): Promise<void> {
-  const body = Buffer.from(await response.arrayBuffer());
   res.statusCode = response.status;
   response.headers.forEach((value, name) => res.setHeader(name, value));
-  res.end(body);
+  if (!response.body) {
+    res.end();
+    return;
+  }
+  const reader = response.body.getReader();
+  // The engine went away: stop reading, which stops a streamed answer's heartbeats.
+  const onClose = () => void reader.cancel().catch(() => {});
+  res.once("close", onClose);
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      res.write(value);
+    }
+  } finally {
+    res.off("close", onClose);
+  }
+  res.end();
 }

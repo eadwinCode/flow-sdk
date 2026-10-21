@@ -3,6 +3,7 @@ package flow
 import (
 	"encoding/json"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -40,6 +41,16 @@ type vectors struct {
 			Body       string `json:"body"`
 			Header     string `json:"header"`
 		} `json:"cases"`
+		Streamed struct {
+			Cases []struct {
+				Status     int     `json:"status"`
+				NoRetry    *string `json:"noRetry"`
+				RetryAfter *string `json:"retryAfter"`
+				Signature  *string `json:"signature"`
+				Body       string  `json:"body"`
+				Text       string  `json:"text"`
+			} `json:"cases"`
+		} `json:"streamed"`
 	} `json:"answers"`
 }
 
@@ -138,6 +149,25 @@ func TestVectorAnswers(t *testing.T) {
 		}
 		if got != c.Header {
 			t.Errorf("signAnswer(%d %q) = %s, want %s", c.Status, c.Body, got, c.Header)
+		}
+	}
+}
+
+func TestVectorStreamedAnswers(t *testing.T) {
+	v := loadVectors(t)
+	if len(v.Answers.Streamed.Cases) == 0 {
+		t.Fatal("no streamed answer cases")
+	}
+	deref := func(p *string) string {
+		if p == nil {
+			return ""
+		}
+		return *p
+	}
+	for _, c := range v.Answers.Streamed.Cases {
+		tail := streamedAnswerTail(c.Status, deref(c.NoRetry), deref(c.RetryAfter), deref(c.Signature), []byte(c.Body))
+		if !strings.HasSuffix(c.Text, string(tail)) || strings.Trim(strings.TrimSuffix(c.Text, string(tail)), "\n") != "" {
+			t.Errorf("streamedAnswerTail(%d) = %q, want the end of %q", c.Status, tail, c.Text)
 		}
 	}
 }

@@ -1,10 +1,14 @@
 import {
+  DEFAULT_HEARTBEAT_MS,
   HEADERS,
   matchSignature,
   parseSigningKey,
   signAnswer,
   signingKeyBearer,
   STATUS,
+  STREAM_ANSWER_HEADERS,
+  STREAM_HEARTBEAT,
+  streamedAnswerTail,
   type AppManifest,
   type FunctionConfig,
   type FlowEvent,
@@ -24,10 +28,27 @@ import { SDK_VERSION } from "./version.ts";
 //   GET   the manifest (signed over the empty body)
 // Every answer to a POST or GET that passed the signature check is signed too
 // (X-Flow-Answer-Signature), so the engine knows it came from the app.
+// When the engine asks (X-Flow-Stream: 1), a POST answer is streamed: headers at once,
+// a heartbeat now and then, the answer at the end. A proxy in front of the app then
+// does not end a long step (Cloudflare ends a call that sends nothing for 100 s).
 
 export interface ServeOptions {
   client: Flow;
   functions: FlowFunction[];
+  /**
+   * Streamed answers (default: on, a heartbeat every 20 s). Only used when the engine
+   * asks for it. `false` turns it off: answers are sent whole at the end, as before.
+   */
+  streaming?: boolean | { heartbeatMs?: number };
+}
+
+/** The heartbeat interval, or null when streaming is off. */
+function heartbeatMs(streaming: ServeOptions["streaming"]): number | null {
+  if (streaming === false) return null;
+  const ms = typeof streaming === "object" ? streaming.heartbeatMs : undefined;
+  if (ms === undefined) return DEFAULT_HEARTBEAT_MS;
+  if (!Number.isFinite(ms) || ms < 1) throw new Error("streaming.heartbeatMs must be a number of 1 or more");
+  return ms;
 }
 
 /** A standard fetch handler. On Workers, pass the handler's `env` as the second argument. */
@@ -66,6 +87,7 @@ export function buildManifest(appId: string, url: string, functions: FlowFunctio
 
 export function serve(options: ServeOptions): FetchHandler {
   const { client } = options;
+  const heartbeat = heartbeatMs(options.streaming);
   // Each function, plus the `<id>-failure` function made from its onFailure.
   const functions: FlowFunction[] = [];
   for (const fn of options.functions) {
@@ -86,11 +108,11 @@ export function serve(options: ServeOptions): FetchHandler {
 
     switch (request.method) {
       case "POST":
-        return handleRun(request, settings, byId);
+        return handleRun(request, settings, byId, heartbeat);
       case "GET": {
-        const seal = await checkRequest(request, "", settings);
-        if (!seal) return unauthorized();
-        return seal(json(buildManifest(client.id, serveUrl(request), functions)));
+        const signer = await checkRequest(request, "", settings);
+        if (!signer) return unauthorized();
+        return seal(json(buildManifest(client.id, serveUrl(request), functions)), signer);
       }
       case "PUT":
         return handleSync(request, settings, functions);
@@ -116,35 +138,101 @@ function checkKeys(s: FlowSettings): string | null {
   return null;
 }
 
-/** Signs an answer (see `checkRequest`). */
-type Seal = (response: Response) => Promise<Response>;
-
-/**
- * Checks the request's signature. Null: refuse it (401). Otherwise, the function that
- * signs the answer with the key that matched. Dev mode lets every request in; it signs
- * the answer only when the request was signed with one of its keys.
- */
-async function checkRequest(request: Request, body: string, s: FlowSettings): Promise<Seal | null> {
-  const header = request.headers.get(HEADERS.signature);
-  const key = await matchSignature({ header, body, keys: [s.signingKey, s.signingKeyFallback] });
-  if (key === null || header === null) return s.isDev ? async (response) => response : null;
-  return (response) => sealAnswer(response, key, header);
+/** How to sign the answers to one request: the key that matched and the request's signature. */
+interface Signer {
+  /** Null: do not sign (dev mode, and the request was not signed with one of the keys). */
+  key: string | null;
+  request: string;
 }
 
-async function sealAnswer(response: Response, key: string, request: string): Promise<Response> {
+/**
+ * Checks the request's signature. Null: refuse it (401). Otherwise, how to sign the
+ * answer (see `seal`). Dev mode lets every request in; it signs the answer only when
+ * the request was signed with one of its keys.
+ */
+async function checkRequest(request: Request, body: string, s: FlowSettings): Promise<Signer | null> {
+  const header = request.headers.get(HEADERS.signature);
+  const key = await matchSignature({ header, body, keys: [s.signingKey, s.signingKeyFallback] });
+  if (key === null || header === null) return s.isDev ? { key: null, request: "" } : null;
+  return { key, request: header };
+}
+
+/** The answer's signature, or null when it is not signed. */
+async function answerSignature(signer: Signer, status: number, headers: Headers, body: string): Promise<string | null> {
+  if (signer.key === null) return null;
+  return signAnswer(signer.key, {
+    request: signer.request,
+    status,
+    noRetry: headers.get(HEADERS.noRetry),
+    retryAfter: headers.get(HEADERS.retryAfter),
+    body,
+  });
+}
+
+/** Signs an answer: adds X-Flow-Answer-Signature. */
+async function seal(response: Response, signer: Signer): Promise<Response> {
+  if (signer.key === null) return response;
   const body = await response.text();
   const headers = new Headers(response.headers);
-  headers.set(
-    HEADERS.answerSignature,
-    await signAnswer(key, {
-      request,
-      status: response.status,
-      noRetry: headers.get(HEADERS.noRetry),
-      retryAfter: headers.get(HEADERS.retryAfter),
-      body,
-    }),
-  );
+  const signature = await answerSignature(signer, response.status, headers, body);
+  if (signature !== null) headers.set(HEADERS.answerSignature, signature);
   return new Response(body, { status: response.status, headers });
+}
+
+/**
+ * A streamed answer (see @clevix/protocol stream.ts): 200 at once, a heartbeat now and
+ * every `heartbeatMs`, then the meta line and body of the answer `answer` makes. If
+ * `answer` throws, the stream breaks off, as a normal answer would be lost.
+ */
+function streamAnswer(signer: Signer, heartbeatMs: number, answer: () => Promise<Response>): Response {
+  const encoder = new TextEncoder();
+  let timer: ReturnType<typeof setInterval> | undefined;
+  let open = true;
+  const stop = () => {
+    open = false;
+    if (timer !== undefined) clearInterval(timer);
+    timer = undefined;
+  };
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      const beat = () => {
+        if (!open) return;
+        try {
+          controller.enqueue(encoder.encode(STREAM_HEARTBEAT));
+        } catch {
+          stop();
+        }
+      };
+      beat();
+      timer = setInterval(beat, heartbeatMs);
+      void (async () => {
+        try {
+          const response = await answer();
+          const body = await response.text();
+          const tail = streamedAnswerTail({
+            status: response.status,
+            noRetry: response.headers.get(HEADERS.noRetry),
+            retryAfter: response.headers.get(HEADERS.retryAfter),
+            signature: await answerSignature(signer, response.status, response.headers, body),
+            body,
+          });
+          if (!open) return;
+          stop();
+          controller.enqueue(encoder.encode(tail));
+          controller.close();
+        } catch (err) {
+          if (!open) return;
+          stop();
+          controller.error(err);
+        }
+      })();
+    },
+    cancel() {
+      // The engine went away (or the step timeout hit): stop the heartbeats.
+      stop();
+    },
+  });
+  return new Response(stream, { status: 200, headers: { ...STREAM_ANSWER_HEADERS } });
 }
 
 function unauthorized(): Response {
@@ -162,15 +250,27 @@ function serveUrl(request: Request): string {
   return `${url.origin}${url.pathname}`;
 }
 
-async function handleRun(request: Request, s: FlowSettings, byId: Map<string, FlowFunction>): Promise<Response> {
+async function handleRun(
+  request: Request,
+  s: FlowSettings,
+  byId: Map<string, FlowFunction>,
+  heartbeat: number | null,
+): Promise<Response> {
   // Check the raw bytes as received, before parsing.
   const body = await request.text();
-  const seal = await checkRequest(request, body, s);
-  if (!seal) return unauthorized();
-  return seal(await run(body, s, byId));
+  const signer = await checkRequest(request, body, s);
+  if (!signer) return unauthorized();
+  const invoke = parseInvoke(body);
+  // A bad request is answered at once, never streamed.
+  if (invoke instanceof Response) return seal(invoke, signer);
+  if (heartbeat !== null && request.headers.get(HEADERS.stream) === "1") {
+    return streamAnswer(signer, heartbeat, () => run(invoke, s, byId));
+  }
+  return seal(await run(invoke, s, byId), signer);
 }
 
-async function run(body: string, s: FlowSettings, byId: Map<string, FlowFunction>): Promise<Response> {
+/** The invoke request in the body, or the 400 answer when it is not one. */
+function parseInvoke(body: string): InvokeRequest | Response {
   let invoke: InvokeRequest;
   try {
     invoke = JSON.parse(body) as InvokeRequest;
@@ -180,6 +280,10 @@ async function run(body: string, s: FlowSettings, byId: Map<string, FlowFunction
   if (!invoke || typeof invoke !== "object" || typeof invoke.fnId !== "string" || !invoke.memo) {
     return errorResponse(400, { name: "BadRequest", message: "body is not an invoke request" });
   }
+  return invoke;
+}
+
+async function run(invoke: InvokeRequest, s: FlowSettings, byId: Map<string, FlowFunction>): Promise<Response> {
   const fn = byId.get(invoke.fnId);
   if (!fn) {
     return errorResponse(
