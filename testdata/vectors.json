@@ -102,6 +102,43 @@
         "string": "flow-answer-v1\nfc187d386c184cafe44c38114d107c0276758c2a08670e513345473be51d1c74\n500\ntrue\n30\n{\"name\":\"Error\",\"message\":\"ünïcode 步\"}",
         "header": "s=fd634f3ab2f347a94d4dc6f918bd557415589e55279748aafed50463f4d31ddc"
       }
-    ]
+    ],
+    "streamed": {
+      "rule": "A streamed answer (request and answer header X-Flow-Stream: 1, status 200) is: zero or more \"\\n\" heartbeats, then the meta line {\"status\":N,\"noRetry\":S|null,\"retryAfter\":S|null,\"signature\":S|null} (keys in this order, no spaces) and \"\\n\", then the raw body. signature is the X-Flow-Answer-Signature of the same answer (see rule above), or null when not signed. Each case: text is the whole answer; the SDKs make text with that many heartbeats in front.",
+      "cases": [
+        {
+          "status": 200,
+          "noRetry": null,
+          "retryAfter": null,
+          "signature": "s=dc934de70b123aa605cfa41512aa80759dee54f433c5acb1d1fa9637ba41b14e",
+          "body": "{\"appId\":\"billing\",\"url\":\"https://billing.example.com/api/flow\",\"sdk\":{\"language\":\"go\",\"version\":\"0.5.0\"},\"functions\":[]}",
+          "text": "\n{\"status\":200,\"noRetry\":null,\"retryAfter\":null,\"signature\":\"s=dc934de70b123aa605cfa41512aa80759dee54f433c5acb1d1fa9637ba41b14e\"}\n{\"appId\":\"billing\",\"url\":\"https://billing.example.com/api/flow\",\"sdk\":{\"language\":\"go\",\"version\":\"0.5.0\"},\"functions\":[]}"
+        },
+        {
+          "status": 206,
+          "noRetry": null,
+          "retryAfter": null,
+          "signature": "s=2c7fd87c89cdf38bffa87477e7737799fa66fed0ea8cff4b38cb19bbab58cc6c",
+          "body": "[{\"op\":\"StepCompleted\",\"id\":\"6f951bc10819e968dbee7ec0f3f6dad953fa9b27\",\"name\":\"load-user\",\"data\":{\"ok\":true}}]",
+          "text": "\n\n{\"status\":206,\"noRetry\":null,\"retryAfter\":null,\"signature\":\"s=2c7fd87c89cdf38bffa87477e7737799fa66fed0ea8cff4b38cb19bbab58cc6c\"}\n[{\"op\":\"StepCompleted\",\"id\":\"6f951bc10819e968dbee7ec0f3f6dad953fa9b27\",\"name\":\"load-user\",\"data\":{\"ok\":true}}]"
+        },
+        {
+          "status": 500,
+          "noRetry": "true",
+          "retryAfter": "30",
+          "signature": "s=fd634f3ab2f347a94d4dc6f918bd557415589e55279748aafed50463f4d31ddc",
+          "body": "{\"name\":\"Error\",\"message\":\"ünïcode 步\"}",
+          "text": "\n\n\n{\"status\":500,\"noRetry\":\"true\",\"retryAfter\":\"30\",\"signature\":\"s=fd634f3ab2f347a94d4dc6f918bd557415589e55279748aafed50463f4d31ddc\"}\n{\"name\":\"Error\",\"message\":\"ünïcode 步\"}"
+        },
+        {
+          "status": 200,
+          "noRetry": null,
+          "retryAfter": null,
+          "signature": null,
+          "body": "{\"appId\":\"billing\",\"url\":\"https://billing.example.com/api/flow\",\"sdk\":{\"language\":\"go\",\"version\":\"0.5.0\"},\"functions\":[]}",
+          "text": "\n{\"status\":200,\"noRetry\":null,\"retryAfter\":null,\"signature\":null}\n{\"appId\":\"billing\",\"url\":\"https://billing.example.com/api/flow\",\"sdk\":{\"language\":\"go\",\"version\":\"0.5.0\"},\"functions\":[]}"
+        }
+      ]
+    }
   }
 }

@@ -190,10 +190,11 @@ Each time the tunnel gives you a new URL, sync with a `PUT` through the new URL
 (`curl -X PUT https://<new tunnel URL>/api/flow`): a `PUT` sync saves the URL of the
 request it gets as the app's URL, so use the tunnel URL, not `localhost`.
 
-A tunnel like this goes through Cloudflare's proxy, which ends a call that gets no
-answer within about 100 seconds (error `524`). So through a tunnel, a step must finish
-in under 100 seconds; the engine's own limit is 14 minutes. A local engine has no
-proxy in between.
+A tunnel like this goes through Cloudflare's proxy, which ends a call that sends
+nothing for about 100 seconds (error `524`). SDK v0.6.0 and later send a heartbeat
+every 20 seconds while a step runs, so steps can run up to their step timeout
+(default 5 minutes, at most 14). With an older SDK, a step must finish in under 100
+seconds. See "Streamed answers" in [protocol.md](protocol.md).
 
 `FLOW_DEV=1` turns off signature checks in the SDK. Use it only for quick tests where
 nothing but your own engine can reach your app. Never set it on a public app: anyone

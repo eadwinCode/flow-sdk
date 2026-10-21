@@ -17,6 +17,9 @@ const (
 	HeaderRetryAfter = "Retry-After"
 	// HeaderAnswerSignature signs the app's answers (see signAnswer in the root package).
 	HeaderAnswerSignature = "X-Flow-Answer-Signature"
+	// HeaderStream: on a POST, the engine takes a streamed answer; on the
+	// answer, the answer is streamed (see stream.go in the root package).
+	HeaderStream = "X-Flow-Stream"
 )
 
 // HTTP status codes of the app endpoint (STATUS in types.ts).

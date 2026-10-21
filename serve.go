@@ -92,16 +92,23 @@ func (c *Client) readSigned(w http.ResponseWriter, r *http.Request) ([]byte, *an
 }
 
 // answerWriter holds the answer until finish, then signs it (when it has a
-// key) and sends it.
+// key) and sends it. For a streamed answer it keeps its own headers (the real
+// ones are already sent) and answerStream.end sends it.
 type answerWriter struct {
 	w       http.ResponseWriter
+	header  http.Header // own headers of a streamed answer; nil: w's
 	key     string
 	request string
 	status  int
 	body    []byte
 }
 
-func (a *answerWriter) Header() http.Header    { return a.w.Header() }
+func (a *answerWriter) Header() http.Header {
+	if a.header != nil {
+		return a.header
+	}
+	return a.w.Header()
+}
 func (a *answerWriter) WriteHeader(status int) { a.status = status }
 func (a *answerWriter) Write(b []byte) (int, error) {
 	a.body = append(a.body, b...)
@@ -156,17 +163,29 @@ func (c *Client) servePost(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	var req core.InvokeRequest
+	if err := json.Unmarshal(body, &req); err != nil {
+		// A bad request is answered at once, never streamed.
+		writeError(aw, http.StatusBadRequest, "BadRequest", "body is not a valid request: "+err.Error())
+		aw.finish()
+		return
+	}
+	if c.heartbeat > 0 && r.Header.Get(core.HeaderStream) == "1" && canFlush(w) {
+		s := startStream(w, r, c.heartbeat)
+		// Stop the heartbeats even after a panic: nothing may write to w once
+		// the handler has returned.
+		defer s.stop()
+		aw.header = http.Header{}
+		c.run(aw, r, &req)
+		s.end(aw)
+		return
+	}
 	// Not deferred: after a panic nothing is sent, as before (net/http drops the connection).
-	c.run(aw, r, body)
+	c.run(aw, r, &req)
 	aw.finish()
 }
 
-func (c *Client) run(w http.ResponseWriter, r *http.Request, body []byte) {
-	var req core.InvokeRequest
-	if err := json.Unmarshal(body, &req); err != nil {
-		writeError(w, http.StatusBadRequest, "BadRequest", "body is not a valid request: "+err.Error())
-		return
-	}
+func (c *Client) run(w http.ResponseWriter, r *http.Request, req *core.InvokeRequest) {
 	fn := c.find(req.FnID)
 	if fn == nil {
 		w.Header().Set(core.HeaderNoRetry, "true")
@@ -182,7 +201,7 @@ func (c *Client) run(w http.ResponseWriter, r *http.Request, body []byte) {
 		}
 		req.Memo, req.Events = memo, events
 	}
-	c.answer(w, c.invoke(r, fn, &req))
+	c.answer(w, c.invoke(r, fn, req))
 }
 
 // loadState loads a run's memo and events from the engine, page by page

@@ -32,6 +32,14 @@ type ClientOpts struct {
 	Dev *bool
 	// HTTPClient is used for sync and sending events. Default: http.DefaultClient.
 	HTTPClient *http.Client
+	// NoStreaming turns off streamed answers: answers are sent whole at the end.
+	// By default a POST answer is streamed when the engine asks for it, so a
+	// proxy in front of the app does not end a long step (see docs/protocol.md).
+	NoStreaming bool
+	// HeartbeatInterval is the time between heartbeats in a streamed answer.
+	// Default: 20s. At least 1ms. It also moves the server's write deadline
+	// (http.Server.WriteTimeout) on, so that does not end a long step.
+	HeartbeatInterval time.Duration
 }
 
 // Client holds an app's functions and talks to the engine.
@@ -44,6 +52,7 @@ type Client struct {
 	dev         bool
 	http        *http.Client
 	now         func() time.Time
+	heartbeat   time.Duration // 0: no streamed answers
 
 	mu        sync.Mutex
 	functions []*function
@@ -85,6 +94,15 @@ func NewClient(opts ClientOpts) (*Client, error) {
 	}
 	if c.http == nil {
 		c.http = http.DefaultClient
+	}
+	if !opts.NoStreaming {
+		c.heartbeat = opts.HeartbeatInterval
+		if c.heartbeat == 0 {
+			c.heartbeat = defaultHeartbeat
+		}
+		if c.heartbeat < time.Millisecond {
+			return nil, errors.New("flow: HeartbeatInterval must be at least 1ms")
+		}
 	}
 	for _, k := range []string{c.signingKey, c.fallbackKey} {
 		if k == "" {
