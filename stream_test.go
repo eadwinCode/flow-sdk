@@ -226,8 +226,39 @@ func TestStreamedAnswerDevModeUnsigned(t *testing.T) {
 	}
 }
 
-func TestHeartbeatIntervalNotNegative(t *testing.T) {
-	if _, err := NewClient(ClientOpts{AppID: "billing", SigningKey: StrPtr(testKey), HeartbeatInterval: -time.Second}); err == nil {
-		t.Fatal("a negative HeartbeatInterval was taken")
+func TestHeartbeatIntervalTooShort(t *testing.T) {
+	for _, d := range []time.Duration{-time.Second, 20} {
+		if _, err := NewClient(ClientOpts{AppID: "billing", SigningKey: StrPtr(testKey), HeartbeatInterval: d}); err == nil {
+			t.Fatalf("HeartbeatInterval %v was taken", d)
+		}
+	}
+}
+
+func TestStreamedAnswerOutlivesWriteTimeout(t *testing.T) {
+	c := newClient(t, ClientOpts{HeartbeatInterval: 20 * time.Millisecond})
+	define(t, c, "slow", func(ctx context.Context, in Input[charge]) (any, error) {
+		time.Sleep(300 * time.Millisecond)
+		return "late", nil
+	})
+	srv := httptest.NewUnstartedServer(c.Serve())
+	srv.Config.WriteTimeout = 100 * time.Millisecond
+	srv.Start()
+	defer srv.Close()
+	body := invokeBody(t, "slow", reqOpts{})
+	sig, _ := signRequest(testKey, body, testNow)
+	req, _ := http.NewRequest(http.MethodPost, srv.URL, strings.NewReader(string(body)))
+	req.Header.Set(core.HeaderSignature, sig)
+	req.Header.Set(core.HeaderStream, "1")
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	b, err := io.ReadAll(res.Body)
+	if err != nil {
+		t.Fatalf("the answer was cut: %v", err)
+	}
+	if s := readStreamed(t, b); string(s.body) != `"late"` {
+		t.Fatalf("answer %s", s.body)
 	}
 }

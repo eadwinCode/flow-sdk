@@ -198,6 +198,7 @@ describe("streamed answers", () => {
     const flow = new Flow({ id: "shop", signingKey: KEY });
     expect(() => serve({ client: flow, functions: [], streaming: { heartbeatMs: 0 } })).toThrow(/heartbeatMs/);
     expect(() => serve({ client: flow, functions: [], streaming: { heartbeatMs: Number.NaN } })).toThrow(/heartbeatMs/);
+    expect(() => serve({ client: flow, functions: [], streaming: { heartbeatMs: 3e9 } })).toThrow(/heartbeatMs/);
   });
 
   it("the Cloudflare adapter passes the stream through", async () => {

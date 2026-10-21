@@ -1,4 +1,5 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
+import { HEADERS } from "@clevix/protocol";
 import { serve as serveFetch, type ServeOptions } from "./serve.ts";
 
 // Express adapter: `app.use("/api/flow", serve({ client, functions }))`.
@@ -52,7 +53,9 @@ export function serve(options: ServeOptions): Middleware {
       });
       await send(res, await handler(request));
     } catch (err) {
-      next(err);
+      // A streamed answer already sent its headers: end the connection, as a lost answer.
+      if (res.headersSent) res.destroy(err instanceof Error ? err : new Error(String(err)));
+      else next(err);
     }
   };
 }
@@ -86,17 +89,18 @@ function requestHeaders(req: ExpressRequest): Headers {
   return headers;
 }
 
-/** Sends the answer chunk by chunk, so a streamed answer's heartbeats go out as they come. */
+/** Sends the answer: a streamed answer chunk by chunk, so its heartbeats go out as they come. */
 async function send(res: ServerResponse, response: Response): Promise<void> {
   res.statusCode = response.status;
   response.headers.forEach((value, name) => res.setHeader(name, value));
-  if (!response.body) {
-    res.end();
+  if (!response.body || response.headers.get(HEADERS.stream) !== "1") {
+    res.end(Buffer.from(await response.arrayBuffer()));
     return;
   }
   const reader = response.body.getReader();
   // The engine went away: stop reading, which stops a streamed answer's heartbeats.
   const onClose = () => void reader.cancel().catch(() => {});
+  if (res.destroyed) onClose();
   res.once("close", onClose);
   try {
     for (;;) {

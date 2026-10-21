@@ -47,7 +47,10 @@ function heartbeatMs(streaming: ServeOptions["streaming"]): number | null {
   if (streaming === false) return null;
   const ms = typeof streaming === "object" ? streaming.heartbeatMs : undefined;
   if (ms === undefined) return DEFAULT_HEARTBEAT_MS;
-  if (!Number.isFinite(ms) || ms < 1) throw new Error("streaming.heartbeatMs must be a number of 1 or more");
+  // setInterval takes at most 2^31 - 1 ms.
+  if (!Number.isFinite(ms) || ms < 1 || ms > 2_147_483_647) {
+    throw new Error("streaming.heartbeatMs must be a number from 1 to 2147483647");
+  }
   return ms;
 }
 
@@ -211,8 +214,9 @@ function streamAnswer(signer: Signer, heartbeatMs: number, answer: () => Promise
           const body = await response.text();
           const tail = streamedAnswerTail({
             status: response.status,
-            noRetry: response.headers.get(HEADERS.noRetry),
-            retryAfter: response.headers.get(HEADERS.retryAfter),
+            // An empty header is null, as in the Go SDK.
+            noRetry: response.headers.get(HEADERS.noRetry) || null,
+            retryAfter: response.headers.get(HEADERS.retryAfter) || null,
             signature: await answerSignature(signer, response.status, response.headers, body),
             body,
           });

@@ -18,7 +18,7 @@ import (
 // the answer to a POST is 200 at once, a "\n" heartbeat now and then, and at
 // the end one meta line and the answer's raw body:
 //
-//	\n\n{"status":206,"noRetry":null,"retryAfter":null,"signature":"s=…"}\n<body>
+//	\n\n\n{"status":206,"noRetry":null,"retryAfter":null,"signature":"s=…"}\n<body>
 
 // defaultHeartbeat is the time between heartbeats. Well under nginx's 60 s.
 const defaultHeartbeat = 20 * time.Second
@@ -57,7 +57,7 @@ func streamedAnswerTail(status int, noRetry, retryAfter, signature string, body 
 func canFlush(w http.ResponseWriter) bool {
 	for {
 		switch t := w.(type) {
-		case http.Flusher:
+		case http.Flusher, interface{ FlushError() error }:
 			return true
 		case interface{ Unwrap() http.ResponseWriter }:
 			w = t.Unwrap()
@@ -67,20 +67,24 @@ func canFlush(w http.ResponseWriter) bool {
 	}
 }
 
+// endWriteTime is how long writing the end of a streamed answer may take.
+const endWriteTime = time.Minute
+
 // answerStream is a streamed answer in progress: it sends heartbeats until end.
 type answerStream struct {
-	w    http.ResponseWriter
-	rc   *http.ResponseController
-	mu   sync.Mutex // guards w between the heartbeat goroutine and end
-	done chan struct{}
-	wg   sync.WaitGroup
-	once sync.Once
+	w     http.ResponseWriter
+	rc    *http.ResponseController
+	every time.Duration
+	mu    sync.Mutex // guards w between the heartbeat goroutine and end
+	done  chan struct{}
+	wg    sync.WaitGroup
+	once  sync.Once
 }
 
 // startStream sends the headers and the first heartbeat, and starts the
 // heartbeats. Call stop (or end) before the handler returns.
 func startStream(w http.ResponseWriter, r *http.Request, every time.Duration) *answerStream {
-	s := &answerStream{w: w, rc: http.NewResponseController(w), done: make(chan struct{})}
+	s := &answerStream{w: w, rc: http.NewResponseController(w), every: every, done: make(chan struct{})}
 	h := w.Header()
 	h.Set("Content-Type", "text/plain; charset=utf-8")
 	h.Set("Cache-Control", "no-store, no-transform")
@@ -111,6 +115,9 @@ func startStream(w http.ResponseWriter, r *http.Request, every time.Duration) *a
 func (s *answerStream) beat() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	// Move the server's write deadline (http.Server.WriteTimeout) on with each
+	// heartbeat, so it does not end a long step either. Ignored when not supported.
+	_ = s.rc.SetWriteDeadline(time.Now().Add(2*s.every + 5*time.Second))
 	_, _ = s.w.Write([]byte(streamHeartbeat))
 	_ = s.rc.Flush()
 }
@@ -134,6 +141,7 @@ func (s *answerStream) end(a *answerWriter) {
 	tail := streamedAnswerTail(a.status, h.Get(core.HeaderNoRetry), h.Get(core.HeaderRetryAfter), signature, a.body)
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	_ = s.rc.SetWriteDeadline(time.Now().Add(endWriteTime))
 	_, _ = s.w.Write(tail)
 	_ = s.rc.Flush()
 }

@@ -37,7 +37,8 @@ type ClientOpts struct {
 	// proxy in front of the app does not end a long step (see docs/protocol.md).
 	NoStreaming bool
 	// HeartbeatInterval is the time between heartbeats in a streamed answer.
-	// Default: 20s.
+	// Default: 20s. At least 1ms. It also moves the server's write deadline
+	// (http.Server.WriteTimeout) on, so that does not end a long step.
 	HeartbeatInterval time.Duration
 }
 
@@ -99,8 +100,8 @@ func NewClient(opts ClientOpts) (*Client, error) {
 		if c.heartbeat == 0 {
 			c.heartbeat = defaultHeartbeat
 		}
-		if c.heartbeat < 0 {
-			return nil, errors.New("flow: HeartbeatInterval must not be negative")
+		if c.heartbeat < time.Millisecond {
+			return nil, errors.New("flow: HeartbeatInterval must be at least 1ms")
 		}
 	}
 	for _, k := range []string{c.signingKey, c.fallbackKey} {
