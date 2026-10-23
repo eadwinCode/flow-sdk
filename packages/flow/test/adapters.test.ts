@@ -4,10 +4,14 @@ import { generateSigningKey, signRequest, type InvokeRequest } from "@clevix/pro
 import express from "express";
 import { Hono } from "hono";
 import { afterEach, describe, expect, it } from "vitest";
-import { Flow, type FlowFunction } from "../src/index.ts";
-import { serve as serveExpress } from "../src/express.ts";
-import { serve as serveHono } from "../src/hono.ts";
-import { serve as serveNext } from "../src/next.ts";
+import { Flow, type FlowFunction, type ServeOptions } from "../src/index.ts";
+import { serve as serveExpressWithBoot } from "../src/express.ts";
+import { serve as serveHonoWithBoot } from "../src/hono.ts";
+import { serve as serveNextWithBoot } from "../src/next.ts";
+// These tests do not cover the sync at boot (see boot.test.ts): it is off.
+const serveExpress = (o: ServeOptions) => serveExpressWithBoot({ syncOnBoot: false, ...o });
+const serveHono = (o: ServeOptions) => serveHonoWithBoot({ syncOnBoot: false, ...o });
+const serveNext = (o: ServeOptions) => serveNextWithBoot({ syncOnBoot: false, ...o });
 
 // Each adapter must answer exactly as the fetch handler does.
 

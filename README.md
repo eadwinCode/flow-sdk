@@ -38,8 +38,8 @@ add your app, your first function, deploy, connect, and your first event.
 1. Your app defines functions with the SDK.
 2. It serves one HTTP endpoint (for example `/api/flow`). The engine calls it to
    run your steps. Every call is signed, and the SDK checks the signature.
-3. After each deploy, sync the app so the engine knows your functions:
-   `curl -X PUT https://your-app/api/flow`.
+3. After each deploy, the app syncs by itself when it starts, so the engine knows
+   your functions. A backup for CI: `curl -X PUT https://your-app/api/flow`.
 4. Send events to the engine. Functions whose trigger matches start a run.
 
 ## Quick start: Go

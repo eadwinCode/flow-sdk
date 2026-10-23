@@ -29,7 +29,7 @@ An app serves one URL (for example `/api/flow`):
 | Method | What |
 | --- | --- |
 | `POST` | Run a function. Signed by the engine. |
-| `PUT` | Sync: the app sends its manifest to the engine (`PUT {base}/apps/{appId}/sync`) and returns the engine's answer. Call it on deploy (for example `curl -X PUT https://app/api/flow`). |
+| `PUT` | Sync: the app sends its manifest to the engine (`PUT {base}/apps/{appId}/sync`) and returns the engine's answer. The SDK also syncs by itself when it starts (see "Sync at boot"); this is the backup, for example `curl -X PUT https://app/api/flow` in CI. |
 | `GET` | Returns the manifest (`AppManifest`) as JSON. Requires a valid signature over the empty body (dev mode: none). The engine calls it to add the app by URL, to resync it, to change its URL, and to ping it while it is down. |
 
 ### Signature check (POST and GET)
@@ -148,7 +148,8 @@ and an `AppManifest` body:
   "appId": "billing",
   "url": "https://billing.example.com/api/flow",
   "sdk": { "language": "typescript", "version": "0.1.0" },
-  "functions": [ { "id": "charge", "name": "Charge", "triggers": [{ "event": "billing/charge" }], "retries": 4 } ]
+  "functions": [ { "id": "charge", "name": "Charge", "triggers": [{ "event": "billing/charge" }], "retries": 4 } ],
+  "manifestHash": "v1:3d72b20f79d2742979481c9533fac08ce6485c1cd684b89c24d4105b51b50182"
 }
 ```
 
@@ -163,8 +164,57 @@ and an `AppManifest` body:
   `timeouts: { step, finish }`, `cancelOn`, `concurrency`, `throttle`, `rateLimit`,
   `debounce`, `batchEvents`, `priority`, `idempotency`, `singleton`. Durations are
   strings like `"30s"`, `"5m"`, `"7d"` or milliseconds as a number.
+- `manifestHash` (optional) is the SDK's own hash of the manifest: `v1:` and the
+  sha256 hex of `{ sdk, functions }` as JSON with sorted keys. It must cover
+  everything a sync saves except the URL: every function with all its config, and
+  the `sdk` language and version (so an SDK upgrade syncs too). The URL is not part
+  of it, so every copy of the app has the same hash. It must match `[A-Za-z0-9:._+/=-]`,
+  1 to 128 chars (hex or base64). The engine never works it out itself: it only
+  stores it and compares it. The `GET` manifest has it too, so a **Resync** stores it
+  as well. A sync without it clears the guard below.
 - The engine answers 200 `{ ok, created, modified, archived, ... }`, or 400/401
   with `{ error, status }`. Functions left out of the manifest are archived.
+- `409` with `code: "ManifestReplaced"` and `retryAt` (ms since epoch): the manifest
+  has the hash that the last change replaced, less than 10 minutes ago. This is an
+  old copy of the app during a rolling deploy (or a rollback by deploy), and the
+  engine did not save it. `retryAt` is when the guard ends. A **Resync** is not
+  checked this way.
+
+### Sync at boot
+
+`GET {FLOW_BASE_URL}/apps/{appId}/sync?hash=<manifestHash>` (URL-encoded) with the same
+bearer as the `PUT` answers what the engine has from the app's last sync. The `hash`
+is the asking copy's own hash: it tells the engine that copies with it still run,
+which keeps the rolling-deploy guard on during a gradual deploy. The SDK sends it on
+every check.
+
+```json
+{ "appId": "billing", "manifestHash": "v1:3d72...", "syncedAt": 1760000000000, "retryAt": null, "checkEveryMs": 300000 }
+```
+
+- `manifestHash` is null when the app is not synced yet, or its last sync had no hash.
+- `retryAt` (ms since epoch) is not null while the rolling-deploy guard is on: then
+  the app must not `PUT`, and checks again at that time.
+- `checkEveryMs` is how often a running app checks again.
+
+The SDK sends this `GET` when the app starts, and then:
+
+- Its hash is the same: nothing. Next check in `checkEveryMs`.
+- Different (null counts as different) and `retryAt` is null: the `PUT`, without
+  `url` (the engine keeps the URL it has). Next check in `checkEveryMs`.
+- Different and `retryAt` is set: no `PUT`. Next check at `retryAt`.
+- The `PUT` gets `409 ManifestReplaced` (the check's answer was a moment old): a
+  warning. Next check at the 409's `retryAt`.
+- The check fails: a warning. Next check in `checkEveryMs`, or 5 minutes. After a
+  `404` (an engine without this route, or a wrong base URL) the next is in 1 hour.
+
+On a `401`, the check and the `PUT` try the fallback key, as the other calls do.
+
+A wait for `retryAt` is measured from the answer's `Date` header, so the app's clock
+does not matter, plus 1 second. Every wait is at least 5 seconds. Long-running
+servers use a timer; on Workers the first request after that time runs the check,
+in `ctx.waitUntil`. Any failure is logged, and never stops the app. See [production.md](production.md#sync-on-every-deploy) for when
+each SDK runs it.
 
 `onFailure` (TypeScript only, in the config) becomes a second function in the
 manifest with ID `<id>-failure` and trigger

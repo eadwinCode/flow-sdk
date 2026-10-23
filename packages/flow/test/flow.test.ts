@@ -14,8 +14,11 @@ import {
   type RunStatePage,
 } from "@clevix/protocol";
 import { describe, expect, it, vi } from "vitest";
-import { DEFAULT_BASE_URL, Flow, hashStepId, NonRetriableError, RetryAfterError, SDK_VERSION, serve, StepError, type FlowFunction, type FlowOptions } from "../src/index.ts";
-import { serve as serveCloudflare } from "../src/cloudflare.ts";
+import { DEFAULT_BASE_URL, Flow, hashStepId, NonRetriableError, RetryAfterError, SDK_VERSION, serve as serveWithBoot, StepError, type FlowFunction, type FlowOptions, type ServeOptions } from "../src/index.ts";
+import { serve as serveCloudflareWithBoot } from "../src/cloudflare.ts";
+// These tests do not cover the sync at boot (see boot.test.ts): it is off.
+const serve = (o: ServeOptions) => serveWithBoot({ syncOnBoot: false, ...o });
+const serveCloudflare = (o: ServeOptions) => serveCloudflareWithBoot({ syncOnBoot: false, ...o });
 import { sha1Hex } from "../src/sha1.ts";
 
 interface Vectors {
@@ -509,6 +512,7 @@ describe("manifest and sync", () => {
           triggers: [{ event: "inngest/function.failed", if: "event.data.function_id == 'billing-charge'" }],
         },
       ],
+      manifestHash: expect.stringMatching(/^v1:[0-9a-f]{64}$/),
     });
   });
 
@@ -532,6 +536,7 @@ describe("manifest and sync", () => {
       url: URL_,
       sdk: { language: "typescript", version: SDK_VERSION },
       functions: [{ id: "charge", triggers: [{ event: "billing/charge" }] }],
+      manifestHash: expect.stringMatching(/^v1:[0-9a-f]{64}$/),
     });
   });
 

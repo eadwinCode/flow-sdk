@@ -116,6 +116,17 @@ Each setting can go in `new Flow({ ... })` or in an env var. A value in code win
 | `baseUrl` | `FLOW_BASE_URL` | The engine's URL, for sync, `flow.send`, and big runs (over 4 MiB the SDK loads the state from the engine). Default: `https://worker.clevixstudio.com` (`DEFAULT_BASE_URL`). Set it only if you run your own engine. |
 | `isDev` | `FLOW_DEV=1` | Turns off signature checks. For local work only, never on a public app. |
 
+`serve` takes these options too:
+
+| Option | What it is for |
+| --- | --- |
+| `syncOnBoot` | Default `true`. The app checks the engine's copy of its functions and syncs when they changed, so a deploy needs no Resync. Express: when `serve` is called. Next.js, Hono and Workers: on the first request, in the background (on Workers in `ctx.waitUntil`). Then it checks again every 5 minutes: a timer that does not keep Node alive, or on Workers the first request after that time. `false` turns it all off. See [production.md](production.md#sync-on-every-deploy). |
+| `streaming` | Default on. `false`, or `{ heartbeatMs }`. See "Streamed answers" in [protocol.md](protocol.md). |
+
+If you call the plain fetch handler from `@clevix/flow` in your own Worker, pass
+`ctx` as the third argument (`handler(request, env, ctx)`), so the sync at boot can
+finish after the answer.
+
 Both keys come from the dashboard's **Add app** dialog (the event key also from the
 Keys page). Each is shown once, when you make it.
 
@@ -152,8 +163,8 @@ Where each key is used:
 ## The endpoint
 
 - `POST` runs a function. The engine signs it.
-- `PUT` syncs: it sends your functions to the engine. Call it after each deploy:
-  `curl -X PUT https://your-app/api/flow`.
+- `PUT` syncs: it sends your functions to the engine. The SDK also syncs by itself
+  when it starts (see below), so this is a backup: `curl -X PUT https://your-app/api/flow`.
 - `GET` returns the manifest (signed calls only, unless dev mode).
 
 ## Good to know

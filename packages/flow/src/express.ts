@@ -1,9 +1,9 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { HEADERS } from "@clevix/protocol";
-import { serve as serveFetch, type ServeOptions } from "./serve.ts";
+import { serveApp, type ServeOptions } from "./serve.ts";
 
 // Express adapter: `app.use("/api/flow", serve({ client, functions }))`.
-// Settings are read from process.env.
+// Settings are read from process.env. The sync at boot starts here, in the background.
 //
 // The signature is checked over the raw body bytes, so this middleware needs the
 // body as it came. It reads the stream itself when nothing read it before. It also
@@ -26,7 +26,8 @@ export interface ExpressRequest extends IncomingMessage {
 export type Middleware = (req: ExpressRequest, res: ServerResponse, next: (err?: unknown) => void) => Promise<void>;
 
 export function serve(options: ServeOptions): Middleware {
-  const handler = serveFetch(options);
+  const { handler, boot } = serveApp(options);
+  boot();
   return async (req, res, next) => {
     try {
       const method = req.method ?? "GET";

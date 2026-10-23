@@ -3,6 +3,7 @@ import {
   HEADERS,
   matchSignature,
   parseSigningKey,
+  sha256Hex,
   signAnswer,
   signingKeyBearer,
   STATUS,
@@ -16,6 +17,7 @@ import {
   type MemoEntry,
   type RunStatePage,
   type SerializedError,
+  type SyncCheck,
 } from "@clevix/protocol";
 import { trimSlash, type Flow, type FlowEnv, type FlowSettings } from "./client.ts";
 import { execute } from "./execute.ts";
@@ -31,6 +33,9 @@ import { SDK_VERSION } from "./version.ts";
 // When the engine asks (X-Flow-Stream: 1), a POST answer is streamed: headers at once,
 // a heartbeat now and then, the answer at the end. A proxy in front of the app then
 // does not end a long step (Cloudflare ends a call that sends nothing for 100 s).
+// Sync at boot: the app asks the engine for the hash of its last sync and PUTs its
+// manifest only when its own hash is different, then checks again now and then
+// (see `checkSync`).
 
 export interface ServeOptions {
   client: Flow;
@@ -40,6 +45,14 @@ export interface ServeOptions {
    * asks for it. `false` turns it off: answers are sent whole at the end, as before.
    */
   streaming?: boolean | { heartbeatMs?: number };
+  /**
+   * Sync at boot (default: on). At start (on Workers: on an isolate's first request, in
+   * the background), the app checks the engine's copy of its manifest and syncs when it
+   * changed, so a deploy needs no Resync. Then it checks again every `checkEveryMs` the
+   * engine gives (5 min): a timer on Node, the first request after that time on Workers.
+   * `false` turns all of it off. Needs the signing key; without one it does nothing.
+   */
+  syncOnBoot?: boolean;
 }
 
 /** The heartbeat interval, or null when streaming is off. */
@@ -54,8 +67,16 @@ function heartbeatMs(streaming: ServeOptions["streaming"]): number | null {
   return ms;
 }
 
-/** A standard fetch handler. On Workers, pass the handler's `env` as the second argument. */
-export type FetchHandler = (request: Request, env?: unknown) => Promise<Response>;
+/** The part of the Workers `ctx` the SDK uses: work that may go on after the answer. */
+export interface WaitUntil {
+  waitUntil(promise: Promise<unknown>): void;
+}
+
+/**
+ * A standard fetch handler. On Workers, pass the handler's `env` and `ctx` as the
+ * second and third arguments (`ctx` lets the sync at boot finish after the answer).
+ */
+export type FetchHandler = (request: Request, env?: unknown, ctx?: WaitUntil) => Promise<Response>;
 
 function json(body: unknown, status = 200, headers: Record<string, string> = {}): Response {
   return new Response(JSON.stringify(body ?? null), {
@@ -88,7 +109,36 @@ export function buildManifest(appId: string, url: string, functions: FlowFunctio
   };
 }
 
+/**
+ * The SDK's hash of a manifest: `v1:` and the sha256 of its `sdk` and `functions` as
+ * JSON with sorted keys. The URL is left out, so every copy of the app has the same
+ * hash. It is the same each time for the same code; the engine only compares it.
+ */
+export async function manifestHash(manifest: Pick<AppManifest, "sdk" | "functions">): Promise<string> {
+  const text = JSON.stringify({ sdk: manifest.sdk, functions: manifest.functions }, (_key, value: unknown) =>
+    value && typeof value === "object" && !Array.isArray(value)
+      ? Object.fromEntries(Object.entries(value).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)))
+      : value,
+  );
+  return `v1:${await sha256Hex(text)}`;
+}
+
+/** What `serveApp` gives the adapters: the handler, and a way to start the sync at boot. */
+export interface ServedApp {
+  handler: FetchHandler;
+  /**
+   * Starts the sync at boot, once; later calls do nothing. Runs in the background and
+   * never throws. The handler calls it on the first request; a long-running server
+   * calls it at start.
+   */
+  boot(env?: FlowEnv, ctx?: WaitUntil): void;
+}
+
 export function serve(options: ServeOptions): FetchHandler {
+  return serveApp(options).handler;
+}
+
+export function serveApp(options: ServeOptions): ServedApp {
   const { client } = options;
   const heartbeat = heartbeatMs(options.streaming);
   // Each function, plus the `<id>-failure` function made from its onFailure.
@@ -103,9 +153,67 @@ export function serve(options: ServeOptions): FetchHandler {
     if (byId.has(fn.id)) throw new Error(`two functions have the id ${fn.id}`);
     byId.set(fn.id, fn);
   }
+  // The same for the whole life of the handler, so it is made once. A failure is not
+  // kept: the next call tries again.
+  let hash: Promise<string> | undefined;
+  const ownHash = () =>
+    (hash ??= manifestHash(buildManifest(client.id, "", functions)).catch((err: unknown) => {
+      hash = undefined;
+      throw err;
+    }));
 
-  return async (request, env) => {
-    const settings = client.settings(env && typeof env === "object" ? (env as FlowEnv) : undefined);
+  let booted = options.syncOnBoot === false;
+  // When (Date.now() time) to check again, and its timer. Null while a check runs, or
+  // when no check is planned.
+  let nextDue: number | null = null;
+  let nextTimer: ReturnType<typeof setTimeout> | undefined;
+
+  const check = (env?: FlowEnv, ctx?: WaitUntil): void => {
+    const plan = (nextInMs: number | undefined) => {
+      if (nextInMs === undefined) return;
+      nextDue = Date.now() + nextInMs;
+      // A long-running server checks again with a timer. On Workers a timer does not
+      // outlive the request, so the first request after that time does it.
+      if (!ctx) {
+        nextTimer = setTimeout(() => checkAgain(env, undefined, true), nextInMs);
+        (nextTimer as { unref?: () => void }).unref?.();
+      }
+    };
+    const done = (async () => {
+      try {
+        plan((await checkSync(client.settings(env), functions, await ownHash())).nextInMs);
+      } catch (err) {
+        console.warn(`flow: the sync check of app ${client.id} failed: ${err instanceof Error ? err.message : String(err)}`);
+        plan(DEFAULT_CHECK_EVERY_MS);
+      }
+    })();
+    try {
+      ctx?.waitUntil(done);
+    } catch {
+      // Not a real ctx: the check still runs, it just may not finish after the answer.
+    }
+  };
+
+  /** The next check (heartbeat or retryAt), once, when its time has come (or the timer fired). */
+  const checkAgain = (env?: FlowEnv, ctx?: WaitUntil, timerFired = false): void => {
+    if (nextDue === null || (!timerFired && Date.now() < nextDue)) return;
+    nextDue = null;
+    clearTimeout(nextTimer);
+    nextTimer = undefined;
+    check(env, ctx);
+  };
+
+  const boot = (env?: FlowEnv, ctx?: WaitUntil): void => {
+    if (booted) return;
+    booted = true;
+    check(env, ctx);
+  };
+
+  const handler: FetchHandler = async (request, env, ctx) => {
+    const flowEnv = env && typeof env === "object" ? (env as FlowEnv) : undefined;
+    boot(flowEnv, ctx);
+    checkAgain(flowEnv, ctx);
+    const settings = client.settings(flowEnv);
     const keyProblem = checkKeys(settings);
     if (keyProblem) return errorResponse(500, { name: "NoSigningKey", message: keyProblem });
 
@@ -115,14 +223,16 @@ export function serve(options: ServeOptions): FetchHandler {
       case "GET": {
         const signer = await checkRequest(request, "", settings);
         if (!signer) return unauthorized();
-        return seal(json(buildManifest(client.id, serveUrl(request), functions)), signer);
+        const manifest = { ...buildManifest(client.id, serveUrl(request), functions), manifestHash: await ownHash() };
+        return seal(json(manifest), signer);
       }
       case "PUT":
-        return handleSync(request, settings, functions);
+        return handleSync(request, settings, functions, await ownHash());
       default:
         return errorResponse(405, { name: "MethodNotAllowed", message: `${request.method} is not allowed` });
     }
   };
+  return { handler, boot };
 }
 
 /** Why the app cannot serve, or null. Without a signing key it serves only in dev mode. */
@@ -373,21 +483,14 @@ async function loadState(runId: string, s: FlowSettings): Promise<{ memo: Record
   return { memo, events: events ?? [] };
 }
 
-async function handleSync(request: Request, s: FlowSettings, functions: FlowFunction[]): Promise<Response> {
+async function handleSync(request: Request, s: FlowSettings, functions: FlowFunction[], hash: string): Promise<Response> {
   if (!s.signingKey) {
     return errorResponse(500, { name: "NoSigningKey", message: "sync needs a signing key: set FLOW_SIGNING_KEY" });
   }
-  const manifest = buildManifest(s.appId, serveUrl(request), functions);
+  const manifest = { ...buildManifest(s.appId, serveUrl(request), functions), manifestHash: hash };
   let response: Response;
   try {
-    response = await s.fetch(`${trimSlash(s.baseUrl)}/apps/${encodeURIComponent(s.appId)}/sync`, {
-      method: "PUT",
-      headers: {
-        Authorization: `Bearer ${await signingKeyBearer(s.signingKey)}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(manifest),
-    });
+    response = await putManifest(s, manifest);
   } catch (err) {
     return errorResponse(502, { name: "SyncFailed", message: err instanceof Error ? err.message : String(err) });
   }
@@ -396,4 +499,168 @@ async function handleSync(request: Request, s: FlowSettings, functions: FlowFunc
     status: response.status,
     headers: { "Content-Type": response.headers.get("Content-Type") ?? "application/json" },
   });
+}
+
+function syncUrl(s: FlowSettings): string {
+  return `${trimSlash(s.baseUrl)}/apps/${encodeURIComponent(s.appId)}/sync`;
+}
+
+async function putManifest(s: FlowSettings, manifest: unknown): Promise<Response> {
+  return fetchWithKeys(s, syncUrl(s), {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(manifest),
+  });
+}
+
+/**
+ * Fetches from the engine with the signing key as bearer. On a 401 it tries the
+ * fallback key, as the other calls to the engine do, so a sync still works while the
+ * keys are being rotated.
+ */
+async function fetchWithKeys(s: FlowSettings, url: string, init: { method: string; headers?: Record<string, string>; body?: string }): Promise<Response> {
+  const keys = [s.signingKey, s.signingKeyFallback].filter((k): k is string => !!k);
+  let response: Response | undefined;
+  for (const [i, key] of keys.entries()) {
+    response = await s.fetch(url, { ...init, headers: { ...init.headers, Authorization: `Bearer ${await signingKeyBearer(key)}` } });
+    if (response.status !== 401 || i === keys.length - 1) break;
+    await response.body?.cancel();
+  }
+  if (!response) throw new Error("no signing key: set FLOW_SIGNING_KEY");
+  return response;
+}
+
+/** What a sync check did. "waiting": the engine's rolling-deploy guard is on, no PUT. */
+export type SyncCheckResult = "no-key" | "in-sync" | "synced" | "waiting" | "replaced" | "failed";
+
+export interface SyncCheckDone {
+  result: SyncCheckResult;
+  /** Check again in this many ms (the heartbeat, or the guard's `retryAt`). None: stop. */
+  nextInMs?: number;
+}
+
+/** The least time between two checks, so a wrong clock or answer can not make a tight loop. */
+const MIN_RETRY_MS = 5_000;
+/** Checked a little after `retryAt`, so the engine's guard has surely ended. */
+const RETRY_SLACK_MS = 1_000;
+/** The heartbeat after a failed check, when the engine did not say (`checkEveryMs`). */
+const DEFAULT_CHECK_EVERY_MS = 5 * 60_000;
+/** The wait after a 404 (an older engine, or a wrong FLOW_BASE_URL). */
+const NOT_FOUND_CHECK_MS = 60 * 60_000;
+/** setTimeout takes at most 2^31 - 1 ms. */
+const MAX_TIMER_MS = 2_147_483_647;
+
+/**
+ * How long to wait for a `retryAt` (ms since epoch, the engine's clock). Measured from
+ * the engine's `Date` header when it has one, so the app's clock does not matter.
+ */
+export function retryDelay(retryAt: unknown, date: string | null, now = Date.now()): number | undefined {
+  if (typeof retryAt !== "number" || !Number.isFinite(retryAt)) return undefined;
+  const engineNow = date ? Date.parse(date) : NaN;
+  const wait = retryAt - (Number.isNaN(engineNow) ? now : engineNow) + RETRY_SLACK_MS;
+  return Math.min(Math.max(wait, MIN_RETRY_MS), MAX_TIMER_MS);
+}
+
+/** The engine's `checkEveryMs`, or undefined when it did not send a usable one. */
+function heartbeatDelay(checkEveryMs: unknown): number | undefined {
+  if (typeof checkEveryMs !== "number" || !Number.isFinite(checkEveryMs) || checkEveryMs <= 0) return undefined;
+  return Math.min(Math.max(checkEveryMs, MIN_RETRY_MS), MAX_TIMER_MS);
+}
+
+/**
+ * One sync check: `GET /apps/:id/sync?hash=`, and a PUT of the manifest only when the
+ * engine's hash is not `hash` (null counts as different) and its guard is off
+ * (`retryAt` null). The PUT has no URL: there is no request to take it from, and the
+ * engine keeps the URL it has. It runs at boot, then every `checkEveryMs` (so a canary
+ * that ends on the old version still syncs), or at `retryAt` while the guard is on.
+ * Logs what went wrong, never throws.
+ */
+export async function checkSync(s: FlowSettings, functions: FlowFunction[], hash: string): Promise<SyncCheckDone> {
+  // Without a key there is nothing to sign with (dev mode); the engine would say 401.
+  if (!s.signingKey) return { result: "no-key" };
+  const prefix = `flow: sync check of app ${s.appId}`;
+  let heartbeat: number | undefined;
+  const failed = (): SyncCheckDone => ({ result: "failed", nextInMs: heartbeat ?? DEFAULT_CHECK_EVERY_MS });
+  try {
+    // The check sends this copy's hash: the engine then knows copies with it still run,
+    // which keeps its rolling-deploy guard on during a gradual deploy.
+    const check = await fetchWithKeys(s, `${syncUrl(s)}?hash=${encodeURIComponent(hash)}`, { method: "GET" });
+    const checkText = await check.text();
+    if (check.status === 404) {
+      // An engine without this route, or a wrong FLOW_BASE_URL: ask again much later.
+      console.warn(
+        `${prefix}: the engine has no sync check (404): an older engine, or check FLOW_BASE_URL. ` +
+          "Until then this app syncs only on PUT or Resync; checking again in 1 hour",
+      );
+      return { result: "failed", nextInMs: NOT_FOUND_CHECK_MS };
+    }
+    if (check.status !== 200) {
+      console.warn(`${prefix}: the check failed (${check.status}): ${engineError(checkText)}`);
+      return failed();
+    }
+    const parsed = parseJson(checkText);
+    if (!parsed) {
+      console.warn(`${prefix}: the check answer is not a JSON object`);
+      return failed();
+    }
+    const stored = parsed as Partial<SyncCheck>;
+    heartbeat = heartbeatDelay(stored.checkEveryMs);
+    const keepChecking = (result: SyncCheckResult): SyncCheckDone =>
+      heartbeat === undefined ? { result } : { result, nextInMs: heartbeat };
+
+    if (stored.manifestHash === hash) return keepChecking("in-sync");
+    if (stored.retryAt !== undefined && stored.retryAt !== null) {
+      // The guard is on (an old copy during a deploy, or a rollback): no PUT until it ends.
+      const wait = retryDelay(stored.retryAt, check.headers.get("Date"));
+      console.info(
+        `${prefix}: the engine has a newer manifest and keeps it for now` +
+          (wait === undefined ? "" : `; checking again in ${Math.ceil(wait / 1000)} s`),
+      );
+      return wait === undefined ? keepChecking("waiting") : { result: "waiting", nextInMs: wait };
+    }
+
+    const { url: _url, ...manifest } = buildManifest(s.appId, "", functions);
+    const response = await putManifest(s, { ...manifest, manifestHash: hash });
+    const text = await response.text();
+    if (response.ok) {
+      console.info(`${prefix}: synced (the engine had ${stored.manifestHash ? "an older manifest" : "no manifest hash"})`);
+      return keepChecking("synced");
+    }
+    const body = parseJson(text);
+    if (response.status === 409 && body?.code === "ManifestReplaced") {
+      // The check's answer was out of date: same as `retryAt` above.
+      const wait = retryDelay(body.retryAt, response.headers.get("Date"));
+      console.warn(
+        `${prefix}: not saved, a newer manifest replaced this one: ${engineError(text)}` +
+          (wait === undefined ? "" : ` (checking again in ${Math.ceil(wait / 1000)} s)`),
+      );
+      return wait === undefined ? keepChecking("replaced") : { result: "replaced", nextInMs: wait };
+    }
+    const neverSynced = stored.syncedAt === null || stored.syncedAt === undefined;
+    console.warn(
+      `${prefix}: the sync failed (${response.status}): ${engineError(text)}` +
+        (neverSynced
+          ? ". The engine may not know this app's URL yet: add the app by URL in the dashboard, or sync once with curl -X PUT <app-url>"
+          : ""),
+    );
+    return failed();
+  } catch (err) {
+    console.warn(`${prefix}: failed: ${err instanceof Error ? err.message : String(err)}`);
+    return failed();
+  }
+}
+
+function parseJson(text: string): Record<string, unknown> | null {
+  try {
+    const value: unknown = JSON.parse(text);
+    return value && typeof value === "object" ? (value as Record<string, unknown>) : null;
+  } catch {
+    return null;
+  }
+}
+
+/** The engine's `error` text, or the start of the body. */
+function engineError(text: string): string {
+  const body = parseJson(text);
+  return typeof body?.error === "string" ? body.error : text.slice(0, 500);
 }
