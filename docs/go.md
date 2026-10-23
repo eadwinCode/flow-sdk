@@ -93,7 +93,7 @@ func main() {
 func loadName(ctx context.Context, id string) (string, error) { return "Ada", nil }
 ```
 
-Add the app in the dashboard (**Apps → Add app**) by this endpoint's URL. After each deploy, sync it: **Resync** in the dashboard, or `curl -X PUT https://your-app/api/flow`.
+Add the app in the dashboard (**Apps → Add app**) by this endpoint's URL. After that, each deploy syncs by itself: the first `client.Serve()` checks the engine's copy of the functions in the background, and syncs when they changed (so call `Serve` after you made the functions). It checks again every 5 minutes while the app runs; call `client.Close()` on shutdown to stop that. `ClientOpts{NoSyncOnBoot: true}` turns it all off. You can still sync by hand: **Resync** in the dashboard, or `curl -X PUT https://your-app/api/flow`. See [production.md](production.md#sync-on-every-deploy).
 
 ## Settings
 

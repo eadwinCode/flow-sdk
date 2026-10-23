@@ -45,6 +45,8 @@ func newClient(t *testing.T, opts ClientOpts) *Client {
 	if opts.Dev == nil {
 		opts.Dev = BoolPtr(false)
 	}
+	// These tests do not cover the sync at boot (see boot_test.go): it is off.
+	opts.NoSyncOnBoot = true
 	c, err := NewClient(opts)
 	if err != nil {
 		t.Fatal(err)
@@ -784,11 +786,13 @@ func TestGetManifest(t *testing.T) {
 		URL       string          `json:"url"`
 		SDK       SDKInfo         `json:"sdk"`
 		Functions json.RawMessage `json:"functions"`
+		Hash      string          `json:"manifestHash"`
 	}
 	if err := json.Unmarshal(a.body, &m); err != nil {
 		t.Fatal(err)
 	}
-	if m.AppID != "billing" || m.URL != "https://billing.example.com/api/flow" || m.SDK.Language != "go" || m.SDK.Version != Version {
+	if m.AppID != "billing" || m.URL != "https://billing.example.com/api/flow" || m.SDK.Language != "go" || m.SDK.Version != Version ||
+		m.Hash != c.ManifestHash() {
 		t.Fatalf("manifest = %s", a.body)
 	}
 	if string(m.Functions) != wantFunctions {
@@ -823,7 +827,7 @@ func TestPutSync(t *testing.T) {
 		t.Fatalf("request = %+v", got)
 	}
 	want := `{"appId":"billing","url":"https://billing.example.com/api/flow","sdk":{"language":"go","version":"` + Version +
-		`"},"functions":` + wantFunctions + `}`
+		`"},"functions":` + wantFunctions + `,"manifestHash":"` + c.ManifestHash() + `"}`
 	if string(got.body) != want {
 		t.Fatalf("body =\n%s\nwant\n%s", got.body, want)
 	}

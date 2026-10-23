@@ -3,6 +3,8 @@ package flow
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -40,6 +42,12 @@ type ClientOpts struct {
 	// Default: 20s. At least 1ms. It also moves the server's write deadline
 	// (http.Server.WriteTimeout) on, so that does not end a long step.
 	HeartbeatInterval time.Duration
+	// NoSyncOnBoot turns off the sync at boot. By default Serve checks in the
+	// background whether the engine has this app's manifest, and syncs when it
+	// changed, so a deploy needs no Resync. Then it checks again every
+	// checkEveryMs the engine gives (5 min) until Client.Close. It needs the
+	// signing key; without one it does nothing.
+	NoSyncOnBoot bool
 }
 
 // Client holds an app's functions and talks to the engine.
@@ -53,6 +61,11 @@ type Client struct {
 	http        *http.Client
 	now         func() time.Time
 	heartbeat   time.Duration // 0: no streamed answers
+	syncOnBoot  bool
+	bootOnce    sync.Once
+	stop        chan struct{} // closed by Close
+	bootDone    chan struct{} // closed when the checks have ended
+	closeOnce   sync.Once
 
 	mu        sync.Mutex
 	functions []*function
@@ -82,6 +95,9 @@ func NewClient(opts ClientOpts) (*Client, error) {
 		baseURL:     strings.TrimRight(pick(opts.BaseURL, "FLOW_BASE_URL"), "/"),
 		http:        opts.HTTPClient,
 		now:         time.Now,
+		syncOnBoot:  !opts.NoSyncOnBoot,
+		stop:        make(chan struct{}),
+		bootDone:    make(chan struct{}),
 	}
 	// Empty counts as not set, like in the TypeScript SDK.
 	if c.baseURL == "" {
@@ -149,26 +165,60 @@ type SDKInfo struct {
 
 // AppManifest is what the app sends on sync and returns on GET.
 type AppManifest struct {
-	AppID     string           `json:"appId"`
-	URL       string           `json:"url"`
+	AppID string `json:"appId"`
+	// URL is left out of the sync at boot: the engine keeps the URL it has.
+	URL       string           `json:"url,omitempty"`
 	SDK       *SDKInfo         `json:"sdk,omitempty"`
 	Functions []FunctionConfig `json:"functions"`
+	// ManifestHash is the SDK's hash of SDK and Functions (see ManifestHash).
+	ManifestHash string `json:"manifestHash,omitempty"`
 }
 
 // Manifest builds the app's manifest with serveURL as the app URL.
 func (c *Client) Manifest(serveURL string) AppManifest {
 	c.mu.Lock()
-	defer c.mu.Unlock()
 	fns := make([]FunctionConfig, 0, len(c.functions))
 	for _, f := range c.functions {
 		fns = append(fns, f.config)
 	}
-	return AppManifest{
+	c.mu.Unlock()
+	m := AppManifest{
 		AppID:     c.appID,
 		URL:       serveURL,
 		SDK:       &SDKInfo{Language: "go", Version: Version},
 		Functions: fns,
 	}
+	m.ManifestHash = manifestHash(m)
+	return m
+}
+
+// ManifestHash is the SDK's hash of the app's manifest: "v1:" and the sha256
+// of its SDK and functions as JSON with sorted keys. The URL is left out, so
+// every copy of the app has the same hash. The engine stores it on sync, and
+// the sync at boot syncs only when the engine has a different one.
+func (c *Client) ManifestHash() string { return c.Manifest("").ManifestHash }
+
+func manifestHash(m AppManifest) string {
+	b, err := json.Marshal(struct {
+		SDK       *SDKInfo         `json:"sdk"`
+		Functions []FunctionConfig `json:"functions"`
+	}{m.SDK, m.Functions})
+	if err != nil {
+		return ""
+	}
+	// Through a map and back: json.Marshal sorts map keys, so struct field
+	// order does not matter.
+	dec := json.NewDecoder(bytes.NewReader(b))
+	dec.UseNumber()
+	var v any
+	if err := dec.Decode(&v); err != nil {
+		return ""
+	}
+	if b, err = json.Marshal(v); err != nil {
+		return ""
+	}
+	sum := sha256.Sum256(b)
+	return "v1:" + hex.EncodeToString(sum[:])
 }
 
 // Sync sends the manifest to the engine (PUT {base}/apps/{appId}/sync) and
@@ -177,34 +227,48 @@ func (c *Client) Sync(ctx context.Context, serveURL string) (int, []byte, error)
 	if serveURL == "" {
 		return 0, nil, errors.New("flow: no serve URL: pass the URL of this app's endpoint")
 	}
-	body, err := json.Marshal(c.Manifest(serveURL))
+	status, _, body, err := c.putManifest(ctx, c.Manifest(serveURL))
+	return status, body, err
+}
+
+func (c *Client) syncURL() string {
+	return c.baseURL + "/apps/" + url.PathEscape(c.appID) + "/sync"
+}
+
+// putManifest sends m and returns the engine's status, headers and body.
+func (c *Client) putManifest(ctx context.Context, m AppManifest) (int, http.Header, []byte, error) {
+	body, err := json.Marshal(m)
 	if err != nil {
-		return 0, nil, err
+		return 0, nil, nil, err
 	}
-	u := c.baseURL + "/apps/" + url.PathEscape(c.appID) + "/sync"
-	req, err := http.NewRequestWithContext(ctx, http.MethodPut, u, bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPut, c.syncURL(), bytes.NewReader(body))
 	if err != nil {
-		return 0, nil, err
+		return 0, nil, nil, err
 	}
 	req.Header.Set("Content-Type", "application/json")
 	if c.signingKey != "" {
 		bearer, err := signingKeyBearer(c.signingKey)
 		if err != nil {
-			return 0, nil, err
+			return 0, nil, nil, err
 		}
 		req.Header.Set("Authorization", "Bearer "+bearer)
 	}
-	return c.do(req)
+	return c.doHeader(req)
 }
 
 func (c *Client) do(req *http.Request) (int, []byte, error) {
+	status, _, b, err := c.doHeader(req)
+	return status, b, err
+}
+
+func (c *Client) doHeader(req *http.Request) (int, http.Header, []byte, error) {
 	res, err := c.http.Do(req)
 	if err != nil {
-		return 0, nil, err
+		return 0, nil, nil, err
 	}
 	defer res.Body.Close()
 	b, err := io.ReadAll(io.LimitReader(res.Body, 10<<20))
-	return res.StatusCode, b, err
+	return res.StatusCode, res.Header, b, err
 }
 
 // Send sends one event and returns its ID.

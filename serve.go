@@ -28,10 +28,15 @@ const maxRequestBytes = 64 << 20
 //
 // Without a signing key, and not in dev mode, it answers every request with
 // 500 NoSigningKey.
+//
+// The first call also starts the sync at boot in the background (see
+// ClientOpts.NoSyncOnBoot), so call Serve after the functions are made. The
+// checks go on until Close.
 func (c *Client) Serve() http.Handler {
 	if c.signingKey == "" && !c.dev {
 		log.Printf("flow: FLOW_SIGNING_KEY is not set; app %s will refuse all requests (set FLOW_DEV=1 for local dev)", c.appID)
 	}
+	c.startBootSync()
 	return http.HandlerFunc(c.serveHTTP)
 }
 

@@ -14,9 +14,13 @@ import {
 } from "@clevix/protocol";
 import express from "express";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { Flow, NonRetriableError, RetryAfterError, serve, type FlowFunction } from "../src/index.ts";
-import { serve as serveCloudflare } from "../src/cloudflare.ts";
-import { serve as serveExpress } from "../src/express.ts";
+import { Flow, NonRetriableError, RetryAfterError, serve as serveWithBoot, type FlowFunction, type ServeOptions } from "../src/index.ts";
+import { serve as serveCloudflareWithBoot } from "../src/cloudflare.ts";
+import { serve as serveExpressWithBoot } from "../src/express.ts";
+// These tests do not cover the sync at boot (see boot.test.ts): it is off.
+const serve = (o: ServeOptions) => serveWithBoot({ syncOnBoot: false, ...o });
+const serveCloudflare = (o: ServeOptions) => serveCloudflareWithBoot({ syncOnBoot: false, ...o });
+const serveExpress = (o: ServeOptions) => serveExpressWithBoot({ syncOnBoot: false, ...o });
 
 // Streamed answers: see packages/protocol/src/stream.ts and docs/protocol.md.
 

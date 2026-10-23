@@ -225,9 +225,11 @@ If it fails (the app is not deployed yet, or it has another key), the app is sti
 added, as **Down**, with the error. Fix it and click **Retry**, or **Resync** on the
 Apps page later.
 
-After **every deploy** the engine must learn your new functions. Click **Resync** on
-the Apps page, or let the app sync itself: send a `PUT` to your own endpoint, and
-the SDK sends your function list to the engine, signed with your app's key.
+After **every deploy** the engine must learn your new functions. The app does this
+by itself when it starts: the SDK asks the engine for the hash of its last sync, and
+sends your function list (signed with your app's key) when it changed. On Workers
+this happens on the first request after the deploy. You can also click **Resync** on
+the Apps page, or send a `PUT` to your own endpoint (handy in CI):
 
 ```bash
 curl -X PUT https://shop.example.com/api/flow

@@ -1,6 +1,6 @@
 # Running in production
 
-- [Sync on every deploy](#sync-on-every-deploy)
+- [Sync on every deploy](#sync-on-every-deploy): the sync at boot, and a CI backup
 - [What sync changes](#what-sync-changes)
 - [Keys](#keys): rotate the signing key, event keys
 - [Runs in the dashboard](#runs-in-the-dashboard)
@@ -10,8 +10,57 @@
 
 ## Sync on every deploy
 
-The engine only knows the functions from your last sync. Make sync the last step of
-every deploy, after the new code is live:
+The engine only knows the functions from your last sync. The SDK syncs by itself
+when the app starts (the **sync at boot**), so most apps need nothing more:
+
+1. The SDK works out a hash of its manifest: every function with all its config,
+   and the SDK language and version, but not the URL. So any change to a function,
+   and an SDK upgrade, makes a new hash.
+2. It asks the engine for the hash of the last sync, and sends its own:
+   `GET {FLOW_BASE_URL}/apps/{appId}/sync?hash=...`, signed with the app's key.
+3. If the two are not the same, and the engine's rolling-deploy guard is off (see
+   below), it sends its manifest (`PUT .../sync`). Otherwise it does nothing.
+4. It checks again every `checkEveryMs` the engine gives (5 minutes), for as long as
+   the app runs. So a copy that ends up as the only one left (for example a
+   Kubernetes canary that was kept) still syncs, a few minutes later.
+
+When it runs:
+
+- **Node servers** (Express) and **Go** (`client.Serve()`): when the app starts,
+  then on a timer. The Node timer does not keep the process alive. In Go, call
+  `client.Close()` on shutdown to stop it.
+- **Next.js**: the first check on the first request, not when the module loads
+  (`next build` loads route modules too, and must not sync before the deploy).
+- **Cloudflare Workers** (and Hono on Workers): there is no start hook and no timer
+  that outlives a request, so each isolate checks on its first request, then on the
+  first request after each 5 minutes, in `ctx.waitUntil`. It never slows a request.
+
+It runs in the background and never stops the app or a request: when it fails, it
+logs a warning (`flow: sync check of app ...`), tries again in 5 minutes, and the
+app runs as before. An engine without the check (`404`) is not asked again. It
+needs the signing key, so in dev mode without one it does nothing. Turn it off with
+`serve({ ..., syncOnBoot: false })` (TypeScript) or `ClientOpts{NoSyncOnBoot: true}`
+(Go).
+
+The sync at boot sends no URL, since no request has come in yet: the engine keeps
+the URL it has. So add a new app by URL in the dashboard first (**Add app**). A new
+app the engine has no URL for fails to sync at boot, and the log says so.
+
+**Rolling deploys.** While a deploy runs, an old copy of the app can restart and
+try to put its old functions back. So after a change, while copies with the new
+hash still run, the engine keeps a guard on, and its check answer has `retryAt`
+(when to ask again). While `retryAt` is set, the SDK does not `PUT`: it waits until
+then and checks again. If the engine still has other functions then and the guard
+is off, it syncs. So a rollback by deploy also syncs, a little later. A `PUT` can
+still get `409 ManifestReplaced` (the check's answer was a moment old); the SDK
+logs it as a warning and treats its `retryAt` the same way. To roll back at once,
+press **Resync**, or send `curl -X PUT <app-url>`.
+
+### A backup in CI
+
+A Worker that gets no traffic after a deploy does not sync until its first request.
+If that matters (for example, an app that only runs cron functions), send the sync
+yourself as the last step of the deploy, after the new code is live:
 
 ```bash
 curl -fsS -X PUT https://shop.example.com/api/flow
@@ -19,7 +68,8 @@ curl -fsS -X PUT https://shop.example.com/api/flow
 
 `-f` makes curl fail on an error answer, so your deploy fails too and you notice.
 Instead of `curl`, you can press **Resync** on the Apps page: the engine then asks
-the app for its functions at the URL it was added with.
+the app for its functions at the URL it was added with. A sync is safe to send more
+than once.
 
 In GitHub Actions:
 

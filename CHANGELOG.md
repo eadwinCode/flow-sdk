@@ -1,5 +1,38 @@
 # Changelog
 
+## Unreleased
+
+- **Sync at boot: a deploy needs no Resync.** When the app starts, both SDKs ask the
+  engine for the hash of the app's last sync (`GET {base}/apps/{appId}/sync?hash=<own
+  hash>`) and send the manifest (`PUT`) only when it is not their own. The hash covers
+  every function's config and the SDK language and version, so an SDK upgrade syncs
+  too. Go: at the first `client.Serve()`. Express: when `serve` is called. Next.js
+  and Hono: on the first request. Cloudflare Workers: on the first request of each
+  isolate, in `ctx.waitUntil`, so it never slows the request.
+- **The check repeats** every `checkEveryMs` the engine gives (5 minutes), so a copy
+  left on a new version (a kept canary) still syncs. Node: a timer that does not
+  keep the process alive. Go: a goroutine; new `client.Close()` stops it. Workers:
+  the first request after that time. It runs in the background, sends
+  no URL (the engine keeps the one it has), and only logs when it fails. Needs an
+  engine with `GET /apps/:id/sync`; with an older one it logs a warning and the app
+  runs as before.
+- **Rolling deploys:** while the engine's guard is on, its check answer has
+  `retryAt`; the SDK then does not `PUT`, and checks again at that time. A `PUT` that
+  still gets `409 ManifestReplaced` is logged as a warning and handled the same way.
+  So a rollback by deploy still syncs, a little later.
+- New option to turn it off: `serve({ ..., syncOnBoot: false })` (TypeScript),
+  `ClientOpts.NoSyncOnBoot` (Go).
+- The manifest (`PUT` sync body and `GET` answer) has a new `manifestHash` field:
+  `v1:` and the sha256 of its SDK and functions. New: `manifestHash()` (TypeScript),
+  `client.ManifestHash()` (Go), and `AppManifest.ManifestHash` (Go). In Go,
+  `AppManifest.URL` is now left out of the JSON when empty.
+- The Cloudflare adapter now passes `ctx` on, and the fetch handler takes it as a
+  third argument (`handler(request, env, ctx)`).
+- A Worker with no traffic after a deploy syncs only on its first request. If that
+  matters (for example, an app with only cron functions), keep
+  `curl -X PUT <app-url>` as the last step of the deploy. See
+  [docs/production.md](docs/production.md#sync-on-every-deploy).
+
 ## v0.6.0
 
 - **Streamed answers: long steps behind a proxy.** Cloudflare's proxy ends a call

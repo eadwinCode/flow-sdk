@@ -185,6 +185,27 @@ export interface AppManifest {
   url: string;
   sdk?: { language: string; version: string };
   functions: FunctionConfig[];
+  /**
+   * The SDK's own hash of `sdk` and `functions`. The engine
+   * stores it and gives it back on `GET /apps/:id/sync`, so an app that boots syncs
+   * only when it changed. Letters, digits and `:._+/=-`, 1 to 128 chars.
+   */
+  manifestHash?: string;
+}
+
+/** The answer to `GET /apps/:id/sync`: what the engine has from the app's last sync. */
+export interface SyncCheck {
+  appId: string;
+  /** Null: not synced yet, or the last sync had no hash. */
+  manifestHash: string | null;
+  syncedAt: number | null;
+  /**
+   * Not null: the rolling-deploy guard is on until then (ms since epoch). Do not PUT;
+   * check again at that time. Older engines leave it out.
+   */
+  retryAt?: number | null;
+  /** How often a running app checks again (ms). Older engines leave it out. */
+  checkEveryMs?: number;
 }
 
 export const HEADERS = {
