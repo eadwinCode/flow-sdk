@@ -56,6 +56,21 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
+/**
+ * Lets the background check run until `done()` is true (crypto.subtle and fetch are
+ * not on a fake timer, so this waits on real turns of the event loop). A fixed number
+ * of turns is not enough on a slow CI machine.
+ */
+async function until(done: () => boolean): Promise<void> {
+  for (let i = 0; i < 20_000 && !done(); i++) await new Promise((r) => setImmediate(r));
+  if (!done()) throw new Error("the background check did not get there");
+}
+
+/** A few turns of the event loop, for checking that nothing happened. */
+async function settle(): Promise<void> {
+  for (let i = 0; i < 50; i++) await new Promise((r) => setImmediate(r));
+}
+
 describe("manifestHash", () => {
   const sdk = { language: "typescript", version: "1.0.0" };
   it("is the same for the same manifest, whatever the key order or URL", async () => {
@@ -326,10 +341,6 @@ describe("checkSync", () => {
 });
 
 describe("checking again", () => {
-  /** Lets the background check run (crypto.subtle is not on a fake timer). */
-  async function settle() {
-    for (let i = 0; i < 50; i++) await new Promise((r) => setImmediate(r));
-  }
 
   const T0 = Date.UTC(2026, 9, 23, 12, 0, 0);
 
@@ -402,13 +413,14 @@ describe("checking again", () => {
     vi.spyOn(console, "info").mockImplementation(() => {});
     const e = replacedOnce();
     serveExpress(app(e.fetch));
-    await settle();
+    // The 409 came back and the timer is set.
+    await until(() => vi.getTimerCount() === 1);
     expect(e.calls.map((c) => c.method)).toEqual(["GET", "PUT"]);
     vi.advanceTimersByTime(60_000);
     await settle();
     expect(e.calls).toHaveLength(2);
     vi.advanceTimersByTime(1_000);
-    await settle();
+    await until(() => e.calls.length === 4);
     expect(e.calls.map((c) => c.method)).toEqual(["GET", "PUT", "GET", "PUT"]);
   });
 
@@ -425,19 +437,17 @@ describe("checking again", () => {
         ),
     });
     serveExpress(app(e.fetch));
-    await settle();
+    await until(() => vi.getTimerCount() === 1);
     vi.advanceTimersByTime(11_000);
-    await settle();
+    // The second 409 came back and set a new timer.
+    await until(() => e.calls.length === 4 && vi.getTimerCount() === 1);
     vi.advanceTimersByTime(11_000);
-    await settle();
+    await until(() => e.calls.length === 6);
     expect(e.calls.map((c) => c.method)).toEqual(["GET", "PUT", "GET", "PUT", "GET", "PUT"]);
   });
 });
 
 describe("the heartbeat (checkEveryMs)", () => {
-  async function settle() {
-    for (let i = 0; i < 50; i++) await new Promise((r) => setImmediate(r));
-  }
   const T0 = Date.UTC(2026, 9, 23, 12, 0, 0);
 
   /** In sync on every check, with a 5 minute heartbeat. */
@@ -452,16 +462,15 @@ describe("the heartbeat (checkEveryMs)", () => {
     vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"] });
     vi.setSystemTime(T0);
     serveExpress(app(e.fetch));
-    await settle();
+    await until(() => vi.getTimerCount() === 1);
     expect(e.calls).toHaveLength(1);
     vi.advanceTimersByTime(299_000);
     await settle();
     expect(e.calls).toHaveLength(1);
     vi.advanceTimersByTime(1_000);
-    await settle();
-    expect(e.calls).toHaveLength(2);
+    await until(() => e.calls.length === 2 && vi.getTimerCount() === 1);
     vi.advanceTimersByTime(300_000);
-    await settle();
+    await until(() => e.calls.length === 3);
     expect(e.calls.map((c) => c.method)).toEqual(["GET", "GET", "GET"]);
   });
 
