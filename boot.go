@@ -28,6 +28,10 @@ var (
 	retryFloor        = 5 * time.Second
 	retrySlack        = time.Second
 	defaultCheckEvery = 5 * time.Minute
+	notFoundCheck     = time.Hour
+	// bootDelay is the wait before the first check, so functions made just
+	// after Serve are still in the manifest.
+	bootDelay = time.Second
 )
 
 // What a check did. "waiting": the engine's guard is on, no PUT.
@@ -47,6 +51,14 @@ func (c *Client) startBootSync() {
 		return
 	}
 	c.bootOnce.Do(func() {
+		select {
+		case <-c.stop:
+			// Closed before Serve: never start.
+			close(c.bootDone)
+			return
+		default:
+		}
+		c.booted.Store(true)
 		go func() {
 			defer close(c.bootDone)
 			// Close also ends a check that is on its way.
@@ -59,6 +71,13 @@ func (c *Client) startBootSync() {
 				case <-base.Done():
 				}
 			}()
+			first := time.NewTimer(bootDelay)
+			select {
+			case <-first.C:
+			case <-base.Done():
+				first.Stop()
+				return
+			}
 			for {
 				ctx, cancel := context.WithTimeout(base, checkTimeout)
 				_, next := c.checkSync(ctx)
@@ -78,21 +97,26 @@ func (c *Client) startBootSync() {
 	})
 }
 
-// Close stops the sync checks that Serve started. Call it when the server
-// shuts down. Serve still answers after Close; it just checks no more.
+// Close stops the sync checks that Serve started, and waits until a check
+// on its way has ended. Call it when the server shuts down. Serve still
+// answers after Close; it just checks no more.
 func (c *Client) Close() {
 	c.closeOnce.Do(func() { close(c.stop) })
+	// Not started yet: mark it so it never starts.
+	c.bootOnce.Do(func() { close(c.bootDone) })
+	<-c.bootDone
 }
 
-// clampWait keeps a wait between retryFloor and a day.
-func clampWait(d time.Duration) time.Duration {
-	if d < retryFloor {
-		return retryFloor
-	}
-	if d > 24*time.Hour {
+// waitMs turns a wait in ms into a Duration between retryFloor and a day.
+// It caps the number first, so a huge one can not overflow.
+func waitMs(ms float64) time.Duration {
+	if ms > float64(24*time.Hour/time.Millisecond) {
 		return 24 * time.Hour
 	}
-	return d
+	if d := time.Duration(ms * float64(time.Millisecond)); d > retryFloor {
+		return d
+	}
+	return retryFloor
 }
 
 // retryDelay is how long to wait for a retryAt (ms since epoch, the engine's
@@ -105,7 +129,7 @@ func retryDelay(retryAt *float64, date string, now time.Time) time.Duration {
 	if t, err := http.ParseTime(date); err == nil {
 		now = t
 	}
-	return clampWait(time.Duration(*retryAt-float64(now.UnixMilli()))*time.Millisecond + retrySlack)
+	return waitMs(*retryAt - float64(now.UnixMilli()) + float64(retrySlack/time.Millisecond))
 }
 
 // syncCheck is the engine's answer to GET /apps/{appId}/sync. RetryAt and
@@ -136,30 +160,19 @@ func (c *Client) checkSync(ctx context.Context) (string, time.Duration) {
 		}
 		return bootFailed, defaultCheckEvery
 	}
-	bearer, err := signingKeyBearer(c.signingKey)
-	if err != nil {
-		log.Printf("%s: %v", prefix, err)
-		return bootFailed, 0
-	}
 	// The check sends this copy's hash: the engine then knows copies with it still
 	// run, which keeps its rolling-deploy guard on during a gradual deploy.
 	m := c.Manifest("")
-	u := c.syncURL() + "?hash=" + url.QueryEscape(m.ManifestHash)
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
-	if err != nil {
-		log.Printf("%s: %v", prefix, err)
-		return bootFailed, 0
-	}
-	req.Header.Set("Authorization", "Bearer "+bearer)
-	status, header, body, err := c.doHeader(req)
+	status, header, body, err := c.doWithKeys(ctx, http.MethodGet, c.syncURL()+"?hash="+url.QueryEscape(m.ManifestHash), nil)
 	if err != nil {
 		log.Printf("%s: the check failed: %v", prefix, err)
 		return failed()
 	}
 	if status == http.StatusNotFound {
-		// An engine without this route: stop, it will not have it in 5 minutes either.
-		log.Printf("%s: the engine has no sync check (404), so this app syncs only on PUT or Resync", prefix)
-		return bootFailed, 0
+		// An engine without this route, or a wrong FLOW_BASE_URL: ask again much later.
+		log.Printf("%s: the engine has no sync check (404): an older engine, or check FLOW_BASE_URL. "+
+			"Until then this app syncs only on PUT or Resync; checking again in 1 hour", prefix)
+		return bootFailed, notFoundCheck
 	}
 	if status != http.StatusOK {
 		log.Printf("%s: the check failed (%d): %s", prefix, status, engineError(body))
@@ -171,7 +184,7 @@ func (c *Client) checkSync(ctx context.Context) (string, time.Duration) {
 		return failed()
 	}
 	if e := stored.CheckEveryMs; e != nil && *e > 0 && !math.IsInf(*e, 0) {
-		heartbeat = clampWait(time.Duration(*e) * time.Millisecond)
+		heartbeat = waitMs(*e)
 	}
 
 	if stored.ManifestHash != nil && *stored.ManifestHash == m.ManifestHash {

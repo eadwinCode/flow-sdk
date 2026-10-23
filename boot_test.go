@@ -19,6 +19,9 @@ import (
 
 // The sync at boot: see boot.go.
 
+// No wait before the first check in tests (TestBootDelay sets one).
+func init() { bootDelay = 0 }
+
 type bootCall struct {
 	method, path, query, auth string
 	body                      map[string]any
@@ -451,9 +454,9 @@ func TestCheckSyncWaitsWhileGuardIsOn(t *testing.T) {
 
 func TestCheckSyncNextTimes(t *testing.T) {
 	captureLog(t)
-	t.Run("an engine without the route (404) stops", func(t *testing.T) {
+	t.Run("a 404 (an older engine) asks again in 1 hour", func(t *testing.T) {
 		e := newBootEngine(t, func(w http.ResponseWriter) { w.WriteHeader(404) }, nil)
-		if got, next := bootClient(t, e.URL).checkSync(context.Background()); got != bootFailed || next != 0 {
+		if got, next := bootClient(t, e.URL).checkSync(context.Background()); got != bootFailed || next != time.Hour {
 			t.Fatalf("got %s, next %s", got, next)
 		}
 	})
@@ -474,4 +477,101 @@ func TestCheckSyncNextTimes(t *testing.T) {
 			t.Fatalf("got %s, next %s", got, next)
 		}
 	})
+}
+
+func TestCheckSyncTriesFallbackKey(t *testing.T) {
+	captureLog(t)
+	oldBearer, _ := signingKeyBearer(testFallback)
+	e := newBootEngine(t, nil, nil)
+	front := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer "+oldBearer {
+			w.WriteHeader(401)
+			_, _ = w.Write([]byte(`{"error":"invalid signing key","status":401}`))
+			return
+		}
+		r.URL.Scheme, r.URL.Host, r.RequestURI = "http", strings.TrimPrefix(e.URL, "http://"), ""
+		res, err := http.DefaultClient.Do(r.WithContext(r.Context()))
+		if err != nil {
+			w.WriteHeader(502)
+			return
+		}
+		defer res.Body.Close()
+		w.WriteHeader(res.StatusCode)
+		_, _ = io.Copy(w, res.Body)
+	}))
+	defer front.Close()
+	c, err := NewClient(ClientOpts{AppID: "billing", SigningKey: StrPtr(testKey), SigningKeyFallback: StrPtr(testFallback), BaseURL: StrPtr(front.URL), NoSyncOnBoot: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := c.checkSync(context.Background()); got != bootSynced {
+		t.Fatalf("got %s", got)
+	}
+	if got := strings.Join(e.methods(), ","); got != "GET,PUT" {
+		t.Fatalf("calls with the old key = %s", got)
+	}
+}
+
+func TestWaitMsDoesNotOverflow(t *testing.T) {
+	if d := waitMs(1e300); d != 24*time.Hour {
+		t.Fatalf("huge: %s", d)
+	}
+	far := float64(time.Now().UnixMilli()) + 1e13 // over 300 years
+	if d := retryDelay(&far, "", time.Now()); d != 24*time.Hour {
+		t.Fatalf("far retryAt: %s", d)
+	}
+	if d := waitMs(-5); d != retryFloor {
+		t.Fatalf("negative: %s", d)
+	}
+}
+
+func TestCloseBeforeServe(t *testing.T) {
+	e := newBootEngine(t, nil, nil)
+	c := bootClient(t, e.URL)
+	c.Close()
+	c.Serve()
+	time.Sleep(50 * time.Millisecond)
+	if got := e.methods(); len(got) != 0 {
+		t.Fatalf("checked after Close: %v", got)
+	}
+	// Close without Serve, or with the checks off, does not block.
+	done := make(chan struct{})
+	go func() {
+		bootClient(t, e.URL).Close()
+		c2, _ := NewClient(ClientOpts{AppID: "billing", NoSyncOnBoot: true})
+		c2.Serve()
+		c2.Close()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("Close blocked")
+	}
+}
+
+func TestBootDelayAndLateFunctions(t *testing.T) {
+	delay := bootDelay
+	bootDelay = 100 * time.Millisecond
+	t.Cleanup(func() { bootDelay = delay })
+	logs := captureLog(t)
+	e := newBootEngine(t, nil, nil)
+	c := bootClient(t, e.URL)
+	c.Serve()
+	// Made just after Serve: still in the first sync, but it warns.
+	ok := func(ctx context.Context, in Input[any]) (any, error) { return nil, nil }
+	if _, err := CreateFunction(c, FunctionOpts{ID: "late"}, EventTrigger("billing/late", nil), ok); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(logs.String(), "function late was made after Serve") {
+		t.Fatalf("log = %q", logs.String())
+	}
+	e.wait(t, 2)
+	c.Close()
+	e.mu.Lock()
+	fns, _ := e.calls[1].body["functions"].([]any)
+	e.mu.Unlock()
+	if len(fns) != 2 {
+		t.Fatalf("the PUT has %d functions, want 2", len(fns))
+	}
 }

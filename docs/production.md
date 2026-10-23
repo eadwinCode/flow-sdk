@@ -30,14 +30,18 @@ When it runs:
   then on a timer. The Node timer does not keep the process alive. In Go, call
   `client.Close()` on shutdown to stop it.
 - **Next.js**: the first check on the first request, not when the module loads
-  (`next build` loads route modules too, and must not sync before the deploy).
+  (`next build` loads route modules too, and must not sync before the deploy). On
+  Vercel it runs in the request's `waitUntil`, so the host does not freeze it half
+  done; other serverless hosts may, so keep the CI backup below there.
 - **Cloudflare Workers** (and Hono on Workers): there is no start hook and no timer
   that outlives a request, so each isolate checks on its first request, then on the
   first request after each 5 minutes, in `ctx.waitUntil`. It never slows a request.
 
 It runs in the background and never stops the app or a request: when it fails, it
 logs a warning (`flow: sync check of app ...`), tries again in 5 minutes, and the
-app runs as before. An engine without the check (`404`) is not asked again. It
+app runs as before. On a `404` (an older engine without the check, or a wrong
+`FLOW_BASE_URL`) it asks again only once an hour. During a key rotation it tries
+`FLOW_SIGNING_KEY_FALLBACK` when the engine says `401`. It
 needs the signing key, so in dev mode without one it does nothing. Turn it off with
 `serve({ ..., syncOnBoot: false })` (TypeScript) or `ClientOpts{NoSyncOnBoot: true}`
 (Go).

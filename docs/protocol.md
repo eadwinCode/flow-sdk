@@ -205,8 +205,10 @@ The SDK sends this `GET` when the app starts, and then:
 - Different and `retryAt` is set: no `PUT`. Next check at `retryAt`.
 - The `PUT` gets `409 ManifestReplaced` (the check's answer was a moment old): a
   warning. Next check at the 409's `retryAt`.
-- The check fails: a warning. Next check in `checkEveryMs`, or 5 minutes. A `404`
-  (an engine without this route) stops the checks.
+- The check fails: a warning. Next check in `checkEveryMs`, or 5 minutes. After a
+  `404` (an engine without this route, or a wrong base URL) the next is in 1 hour.
+
+On a `401`, the check and the `PUT` try the fallback key, as the other calls do.
 
 A wait for `retryAt` is measured from the answer's `Date` header, so the app's clock
 does not matter, plus 1 second. Every wait is at least 5 seconds. Long-running

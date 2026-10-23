@@ -199,6 +199,24 @@ describe("sync at boot on Node", () => {
     await vi.waitFor(() => expect(e.calls.map((c) => c.method)).toEqual(["GET", "PUT"]));
   });
 
+  it("Next on Vercel: the check runs in the request context's waitUntil", async () => {
+    const e = engine();
+    vi.spyOn(console, "info").mockImplementation(() => {});
+    const waiting: Promise<unknown>[] = [];
+    const key = Symbol.for("@vercel/request-context");
+    const g = globalThis as Record<symbol, unknown>;
+    g[key] = { get: () => ({ waitUntil: (p: Promise<unknown>) => void waiting.push(p) }) };
+    try {
+      const { GET } = serveNext(app(e.fetch));
+      await GET(await signedGet());
+      expect(waiting).toHaveLength(1);
+      await Promise.all(waiting);
+      expect(e.calls.map((c) => c.method)).toEqual(["GET", "PUT"]);
+    } finally {
+      delete g[key];
+    }
+  });
+
   it("does nothing without a signing key (dev mode)", async () => {
     const e = engine();
     const flow = new Flow({ id: "shop", isDev: true, baseUrl: ENGINE, fetch: e.fetch });
@@ -246,10 +264,34 @@ describe("checkSync", () => {
     expect(e.calls).toHaveLength(1);
   });
 
-  it("a failed check tries again in 5 minutes; an engine without the route (404) stops", async () => {
+  it("a failed check tries again in 5 minutes; a 404 (an older engine) in 1 hour", async () => {
     vi.spyOn(console, "warn").mockImplementation(() => {});
     expect(await run(engine({ check: () => new Response("oops", { status: 503 }) }))).toEqual({ result: "failed", nextInMs: 300_000 });
-    expect(await run(engine({ check: () => new Response("not found", { status: 404 }) }))).toEqual({ result: "failed" });
+    expect(await run(engine({ check: () => new Response("not found", { status: 404 }) }))).toEqual({ result: "failed", nextInMs: 3_600_000 });
+  });
+
+  it("tries the fallback key on a 401, for the check and the PUT (key rotation)", async () => {
+    vi.spyOn(console, "info").mockImplementation(() => {});
+    const OLD = generateSigningKey();
+    const oldBearer = `Bearer ${await signingKeyBearer(OLD)}`;
+    const e = engine();
+    const onlyOldKey = (async (url: string, init: RequestInit = {}) => {
+      const auth = ((init.headers ?? {}) as Record<string, string>).Authorization;
+      if (auth !== oldBearer) {
+        e.calls.push({ method: init.method ?? "GET", url, auth, body: undefined });
+        return Response.json({ error: "invalid signing key", status: 401 }, { status: 401 });
+      }
+      return (e.fetch as unknown as (u: string, i: RequestInit) => Promise<Response>)(url, init);
+    }) as unknown as typeof globalThis.fetch;
+    const flow = new Flow({ id: "shop", signingKey: KEY, signingKeyFallback: OLD, baseUrl: ENGINE, fetch: onlyOldKey });
+    const done = await checkSync(flow.settings({}), [], "v1:abc");
+    expect(done.result).toBe("synced");
+    expect(e.calls.map((c) => [c.method, c.auth === oldBearer ? "old" : "new"])).toEqual([
+      ["GET", "new"],
+      ["GET", "old"],
+      ["PUT", "new"],
+      ["PUT", "old"],
+    ]);
   });
 
   it("while the engine's guard is on (retryAt), it does not PUT and waits for retryAt", async () => {

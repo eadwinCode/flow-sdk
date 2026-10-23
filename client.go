@@ -9,11 +9,13 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"os"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -64,7 +66,8 @@ type Client struct {
 	syncOnBoot  bool
 	bootOnce    sync.Once
 	stop        chan struct{} // closed by Close
-	bootDone    chan struct{} // closed when the checks have ended
+	bootDone    chan struct{} // closed when the checks have ended, or will never start
+	booted      atomic.Bool   // the checks have started
 	closeOnce   sync.Once
 
 	mu        sync.Mutex
@@ -143,6 +146,10 @@ func (c *Client) add(fn *function) error {
 		}
 	}
 	c.functions = append(c.functions, fn)
+	if c.booted.Load() {
+		log.Printf("flow: function %s was made after Serve: the sync check may send the engine a list without it, "+
+			"and the engine archives it until the next check. Make all functions before calling Serve", fn.config.ID)
+	}
 	return nil
 }
 
@@ -241,19 +248,55 @@ func (c *Client) putManifest(ctx context.Context, m AppManifest) (int, http.Head
 	if err != nil {
 		return 0, nil, nil, err
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPut, c.syncURL(), bytes.NewReader(body))
-	if err != nil {
-		return 0, nil, nil, err
+	return c.doWithKeys(ctx, http.MethodPut, c.syncURL(), body)
+}
+
+// doWithKeys sends a request to the engine with the signing key as bearer.
+// On a 401 it tries the fallback key, so a sync still works while the keys
+// are being rotated. Without a key it sends no bearer.
+func (c *Client) doWithKeys(ctx context.Context, method, u string, body []byte) (int, http.Header, []byte, error) {
+	keys := []string{}
+	for _, k := range []string{c.signingKey, c.fallbackKey} {
+		if k != "" {
+			keys = append(keys, k)
+		}
 	}
-	req.Header.Set("Content-Type", "application/json")
-	if c.signingKey != "" {
-		bearer, err := signingKeyBearer(c.signingKey)
+	if len(keys) == 0 {
+		keys = append(keys, "")
+	}
+	var (
+		status int
+		header http.Header
+		b      []byte
+	)
+	for i, k := range keys {
+		var r io.Reader
+		if body != nil {
+			r = bytes.NewReader(body)
+		}
+		req, err := http.NewRequestWithContext(ctx, method, u, r)
 		if err != nil {
 			return 0, nil, nil, err
 		}
-		req.Header.Set("Authorization", "Bearer "+bearer)
+		if body != nil {
+			req.Header.Set("Content-Type", "application/json")
+		}
+		if k != "" {
+			bearer, err := signingKeyBearer(k)
+			if err != nil {
+				return 0, nil, nil, err
+			}
+			req.Header.Set("Authorization", "Bearer "+bearer)
+		}
+		status, header, b, err = c.doHeader(req)
+		if err != nil {
+			return 0, nil, nil, err
+		}
+		if status != http.StatusUnauthorized || i == len(keys)-1 {
+			break
+		}
 	}
-	return c.doHeader(req)
+	return status, header, b, nil
 }
 
 func (c *Client) do(req *http.Request) (int, []byte, error) {

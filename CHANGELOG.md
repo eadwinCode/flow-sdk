@@ -11,8 +11,10 @@
   isolate, in `ctx.waitUntil`, so it never slows the request.
 - **The check repeats** every `checkEveryMs` the engine gives (5 minutes), so a copy
   left on a new version (a kept canary) still syncs. Node: a timer that does not
-  keep the process alive. Go: a goroutine; new `client.Close()` stops it. Workers:
-  the first request after that time. It runs in the background, sends
+  keep the process alive. Go: a goroutine, 1 second after `Serve`; new
+  `client.Close()` stops it. Workers: the first request after that time. Next.js on
+  Vercel: in the request's `waitUntil`. The check and its `PUT` try the fallback
+  signing key on a `401`. It runs in the background, sends
   no URL (the engine keeps the one it has), and only logs when it fails. Needs an
   engine with `GET /apps/:id/sync`; with an older one it logs a warning and the app
   runs as before.

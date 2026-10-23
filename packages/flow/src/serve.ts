@@ -153,9 +153,14 @@ export function serveApp(options: ServeOptions): ServedApp {
     if (byId.has(fn.id)) throw new Error(`two functions have the id ${fn.id}`);
     byId.set(fn.id, fn);
   }
-  // The same for the whole life of the handler, so it is made once.
+  // The same for the whole life of the handler, so it is made once. A failure is not
+  // kept: the next call tries again.
   let hash: Promise<string> | undefined;
-  const ownHash = () => (hash ??= manifestHash(buildManifest(client.id, "", functions)));
+  const ownHash = () =>
+    (hash ??= manifestHash(buildManifest(client.id, "", functions)).catch((err: unknown) => {
+      hash = undefined;
+      throw err;
+    }));
 
   let booted = options.syncOnBoot === false;
   // When (Date.now() time) to check again, and its timer. Null while a check runs, or
@@ -164,19 +169,22 @@ export function serveApp(options: ServeOptions): ServedApp {
   let nextTimer: ReturnType<typeof setTimeout> | undefined;
 
   const check = (env?: FlowEnv, ctx?: WaitUntil): void => {
+    const plan = (nextInMs: number | undefined) => {
+      if (nextInMs === undefined) return;
+      nextDue = Date.now() + nextInMs;
+      // A long-running server checks again with a timer. On Workers a timer does not
+      // outlive the request, so the first request after that time does it.
+      if (!ctx) {
+        nextTimer = setTimeout(() => checkAgain(env, undefined, true), nextInMs);
+        (nextTimer as { unref?: () => void }).unref?.();
+      }
+    };
     const done = (async () => {
       try {
-        const { nextInMs } = await checkSync(client.settings(env), functions, await ownHash());
-        if (nextInMs === undefined) return;
-        nextDue = Date.now() + nextInMs;
-        // A long-running server checks again with a timer. On Workers a timer does not
-        // outlive the request, so the first request after that time does it.
-        if (!ctx) {
-          nextTimer = setTimeout(() => checkAgain(env, undefined, true), nextInMs);
-          (nextTimer as { unref?: () => void }).unref?.();
-        }
+        plan((await checkSync(client.settings(env), functions, await ownHash())).nextInMs);
       } catch (err) {
         console.warn(`flow: the sync check of app ${client.id} failed: ${err instanceof Error ? err.message : String(err)}`);
+        plan(DEFAULT_CHECK_EVERY_MS);
       }
     })();
     try {
@@ -482,7 +490,7 @@ async function handleSync(request: Request, s: FlowSettings, functions: FlowFunc
   const manifest = { ...buildManifest(s.appId, serveUrl(request), functions), manifestHash: hash };
   let response: Response;
   try {
-    response = await putManifest(s, s.signingKey, manifest);
+    response = await putManifest(s, manifest);
   } catch (err) {
     return errorResponse(502, { name: "SyncFailed", message: err instanceof Error ? err.message : String(err) });
   }
@@ -497,15 +505,29 @@ function syncUrl(s: FlowSettings): string {
   return `${trimSlash(s.baseUrl)}/apps/${encodeURIComponent(s.appId)}/sync`;
 }
 
-async function putManifest(s: FlowSettings, signingKey: string, manifest: unknown): Promise<Response> {
-  return s.fetch(syncUrl(s), {
+async function putManifest(s: FlowSettings, manifest: unknown): Promise<Response> {
+  return fetchWithKeys(s, syncUrl(s), {
     method: "PUT",
-    headers: {
-      Authorization: `Bearer ${await signingKeyBearer(signingKey)}`,
-      "Content-Type": "application/json",
-    },
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify(manifest),
   });
+}
+
+/**
+ * Fetches from the engine with the signing key as bearer. On a 401 it tries the
+ * fallback key, as the other calls to the engine do, so a sync still works while the
+ * keys are being rotated.
+ */
+async function fetchWithKeys(s: FlowSettings, url: string, init: { method: string; headers?: Record<string, string>; body?: string }): Promise<Response> {
+  const keys = [s.signingKey, s.signingKeyFallback].filter((k): k is string => !!k);
+  let response: Response | undefined;
+  for (const [i, key] of keys.entries()) {
+    response = await s.fetch(url, { ...init, headers: { ...init.headers, Authorization: `Bearer ${await signingKeyBearer(key)}` } });
+    if (response.status !== 401 || i === keys.length - 1) break;
+    await response.body?.cancel();
+  }
+  if (!response) throw new Error("no signing key: set FLOW_SIGNING_KEY");
+  return response;
 }
 
 /** What a sync check did. "waiting": the engine's rolling-deploy guard is on, no PUT. */
@@ -523,6 +545,8 @@ const MIN_RETRY_MS = 5_000;
 const RETRY_SLACK_MS = 1_000;
 /** The heartbeat after a failed check, when the engine did not say (`checkEveryMs`). */
 const DEFAULT_CHECK_EVERY_MS = 5 * 60_000;
+/** The wait after a 404 (an older engine, or a wrong FLOW_BASE_URL). */
+const NOT_FOUND_CHECK_MS = 60 * 60_000;
 /** setTimeout takes at most 2^31 - 1 ms. */
 const MAX_TIMER_MS = 2_147_483_647;
 
@@ -558,18 +582,17 @@ export async function checkSync(s: FlowSettings, functions: FlowFunction[], hash
   let heartbeat: number | undefined;
   const failed = (): SyncCheckDone => ({ result: "failed", nextInMs: heartbeat ?? DEFAULT_CHECK_EVERY_MS });
   try {
-    const bearer = await signingKeyBearer(s.signingKey);
     // The check sends this copy's hash: the engine then knows copies with it still run,
     // which keeps its rolling-deploy guard on during a gradual deploy.
-    const check = await s.fetch(`${syncUrl(s)}?hash=${encodeURIComponent(hash)}`, {
-      method: "GET",
-      headers: { Authorization: `Bearer ${bearer}` },
-    });
+    const check = await fetchWithKeys(s, `${syncUrl(s)}?hash=${encodeURIComponent(hash)}`, { method: "GET" });
     const checkText = await check.text();
     if (check.status === 404) {
-      // An engine without this route: stop, it will not have it in 5 minutes either.
-      console.warn(`${prefix}: the engine has no sync check (404), so this app syncs only on PUT or Resync`);
-      return { result: "failed" };
+      // An engine without this route, or a wrong FLOW_BASE_URL: ask again much later.
+      console.warn(
+        `${prefix}: the engine has no sync check (404): an older engine, or check FLOW_BASE_URL. ` +
+          "Until then this app syncs only on PUT or Resync; checking again in 1 hour",
+      );
+      return { result: "failed", nextInMs: NOT_FOUND_CHECK_MS };
     }
     if (check.status !== 200) {
       console.warn(`${prefix}: the check failed (${check.status}): ${engineError(checkText)}`);
@@ -597,7 +620,7 @@ export async function checkSync(s: FlowSettings, functions: FlowFunction[], hash
     }
 
     const { url: _url, ...manifest } = buildManifest(s.appId, "", functions);
-    const response = await putManifest(s, s.signingKey, { ...manifest, manifestHash: hash });
+    const response = await putManifest(s, { ...manifest, manifestHash: hash });
     const text = await response.text();
     if (response.ok) {
       console.info(`${prefix}: synced (the engine had ${stored.manifestHash ? "an older manifest" : "no manifest hash"})`);
