@@ -25,7 +25,7 @@ import (
 )
 ```
 
-Pin a version with `@v0.6.0` in place of `@latest`. To upgrade, run `go get`
+Pin a version with `@v0.6.5` in place of `@latest`. To upgrade, run `go get`
 again with the new version, then `go mod tidy`. The versions are the
 [releases](https://github.com/eadwinCode/flow-sdk/releases).
 
