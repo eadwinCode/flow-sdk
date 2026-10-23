@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v0.6.5
 
 - **Sync at boot: a deploy needs no Resync.** When the app starts, both SDKs ask the
   engine for the hash of the app's last sync (`GET {base}/apps/{appId}/sync?hash=<own

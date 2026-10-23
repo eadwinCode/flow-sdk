@@ -59,13 +59,13 @@ TypeScript (take the newest version from the
 [releases](https://github.com/eadwinCode/flow-sdk/releases)):
 
 ```bash
-npm install https://github.com/eadwinCode/flow-sdk/releases/download/v0.6.0/clevix-flow-0.6.0.tgz
+npm install https://github.com/eadwinCode/flow-sdk/releases/download/v0.6.5/clevix-flow-0.6.5.tgz
 ```
 
 Go (needs Go 1.27+):
 
 ```bash
-go get github.com/eadwinCode/flow-sdk@v0.6.0
+go get github.com/eadwinCode/flow-sdk@v0.6.5
 ```
 
 ## 3. Write a function
