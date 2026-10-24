@@ -133,7 +133,7 @@ Both SDKs read the same env vars. Values passed in code win.
 | `FLOW_SIGNING_KEY` | Your app's own signing key, from **Add app** in the dashboard. Checks calls from the engine and signs sync. Required unless dev mode. |
 | `FLOW_SIGNING_KEY_FALLBACK` | The app's old key while you rotate it. |
 | `FLOW_EVENT_KEY` | For sending events from your app. |
-| `FLOW_BASE_URL` | The engine's URL. Default: `https://worker.clevixstudio.com`. Set it only if you run your own engine. |
+| `FLOW_BASE_URL` | The engine's URL. Default: `https://worker.flow.clevixstudio.com`. Set it only if you run your own engine. |
 | `FLOW_DEV` | `1` turns off signature checks. For local work only. |
 
 ## Versions

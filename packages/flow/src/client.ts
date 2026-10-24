@@ -8,7 +8,7 @@ const ID_RE = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/;
 const FAILURE_SUFFIX = "-failure";
 export const FAILURE_EVENT = "inngest/function.failed";
 /** The engine's URL when neither `baseUrl` nor FLOW_BASE_URL is set. Self-hosters set FLOW_BASE_URL. */
-export const DEFAULT_BASE_URL = "https://worker.clevixstudio.com";
+export const DEFAULT_BASE_URL = "https://worker.flow.clevixstudio.com";
 
 export interface FlowOptions {
   /** The app's ID. */
@@ -16,7 +16,7 @@ export interface FlowOptions {
   signingKey?: string;
   signingKeyFallback?: string;
   eventKey?: string;
-  /** Engine URL. Default: FLOW_BASE_URL, else "https://worker.clevixstudio.com". */
+  /** Engine URL. Default: FLOW_BASE_URL, else "https://worker.flow.clevixstudio.com". */
   baseUrl?: string;
   /** Turns off signature checks. For local development only. */
   isDev?: boolean;

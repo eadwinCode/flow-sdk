@@ -128,7 +128,7 @@ different step IDs (`fan-out-0`, `fan-out-1`, ...).
 Any service, in any language, can send events with a plain HTTP request.
 
 ```bash
-curl -X POST https://worker.clevixstudio.com/e \
+curl -X POST https://worker.flow.clevixstudio.com/e \
   -H "Authorization: Bearer $FLOW_EVENT_KEY" \
   -H "Content-Type: application/json" \
   -d '[{"name": "order/paid", "data": {"orderId": "o_123"}}]'

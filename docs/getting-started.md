@@ -31,7 +31,7 @@ TypeScript and Go side by side; use the one your app is written in.
 ## 1. Get your app's keys
 
 You need an account on the engine's dashboard. The SDK talks to
-`https://worker.clevixstudio.com` unless you set `FLOW_BASE_URL` (you run your own
+`https://worker.flow.clevixstudio.com` unless you set `FLOW_BASE_URL` (you run your own
 engine).
 
 In the dashboard, open **Apps** and click **Add app**:
@@ -196,7 +196,7 @@ The SDK reads its settings from env vars. You can also pass them in code
 | `FLOW_SIGNING_KEY` | always | Your app's signing key from step 1. Secret. |
 | `FLOW_EVENT_KEY` | sending events from this app | The event key from step 1. Secret. |
 | `FLOW_SIGNING_KEY_FALLBACK` | key rotation | The app's old signing key while you switch. Secret. |
-| `FLOW_BASE_URL` | only if you run your own engine | The engine's URL. Default: `https://worker.clevixstudio.com`. |
+| `FLOW_BASE_URL` | only if you run your own engine | The engine's URL. Default: `https://worker.flow.clevixstudio.com`. |
 
 On Cloudflare Workers, put secrets in with wrangler:
 
@@ -244,7 +244,7 @@ in your deploy script or CI job. [production.md](production.md) has an example.
 Send `user/signed-up` with your event key. With curl:
 
 ```bash
-curl -X POST https://worker.clevixstudio.com/e \
+curl -X POST https://worker.flow.clevixstudio.com/e \
   -H "Authorization: Bearer $FLOW_EVENT_KEY" \
   -H "Content-Type: application/json" \
   -d '{"name": "user/signed-up", "data": {"userId": "u_123"}}'

@@ -679,7 +679,7 @@ func TestEnvVars(t *testing.T) {
 	}
 	t.Setenv("FLOW_BASE_URL", "")
 	c, _ = NewClient(ClientOpts{AppID: "billing"})
-	if c.baseURL != DefaultBaseURL || DefaultBaseURL != "https://worker.clevixstudio.com" {
+	if c.baseURL != DefaultBaseURL || DefaultBaseURL != "https://worker.flow.clevixstudio.com" {
 		t.Fatalf("default engine URL: got %q", c.baseURL)
 	}
 	// Empty counts as not set, like in the TypeScript SDK.

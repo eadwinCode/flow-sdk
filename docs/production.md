@@ -196,7 +196,7 @@ Events are kept 4 days.
 
 When a run's state passes 4 MB, the engine stops sending it in each call, and the
 SDK loads it from the engine instead, at `FLOW_BASE_URL` (default
-`https://worker.clevixstudio.com`). If you run your own engine, set it in every app,
+`https://worker.flow.clevixstudio.com`). If you run your own engine, set it in every app,
 even ones that never send events.
 
 ## Troubleshooting

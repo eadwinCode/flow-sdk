@@ -17,7 +17,7 @@ engine.
 | `FLOW_SIGNING_KEY` | `signkey-<64 hex>`, the app's own key. Checks calls from the engine, and signs sync. Required unless dev mode. |
 | `FLOW_SIGNING_KEY_FALLBACK` | Old key while rotating. Calls signed with either key are accepted. |
 | `FLOW_EVENT_KEY` | Event key, for sending events. |
-| `FLOW_BASE_URL` | Engine URL. Default: `https://worker.clevixstudio.com`. |
+| `FLOW_BASE_URL` | Engine URL. Default: `https://worker.flow.clevixstudio.com`. |
 | `FLOW_DEV` | `1` turns off signature checks. Without it, the SDK refuses to serve with no signing key. |
 
 Options passed in code win over these.

@@ -113,7 +113,7 @@ Each setting can go in `new Flow({ ... })` or in an env var. A value in code win
 | `signingKey` | `FLOW_SIGNING_KEY` | Your app's own signing key. Checks that calls really come from the engine, and proves who you are when you sync. Required unless dev mode. Secret. |
 | `signingKeyFallback` | `FLOW_SIGNING_KEY_FALLBACK` | The app's old signing key while you swap keys. Secret. |
 | `eventKey` | `FLOW_EVENT_KEY` | Lets `flow.send` send events. Only needed if this app sends events. Secret. |
-| `baseUrl` | `FLOW_BASE_URL` | The engine's URL, for sync, `flow.send`, and big runs (over 4 MiB the SDK loads the state from the engine). Default: `https://worker.clevixstudio.com` (`DEFAULT_BASE_URL`). Set it only if you run your own engine. |
+| `baseUrl` | `FLOW_BASE_URL` | The engine's URL, for sync, `flow.send`, and big runs (over 4 MiB the SDK loads the state from the engine). Default: `https://worker.flow.clevixstudio.com` (`DEFAULT_BASE_URL`). Set it only if you run your own engine. |
 | `isDev` | `FLOW_DEV=1` | Turns off signature checks. For local work only, never on a public app. |
 
 `serve` takes these options too:

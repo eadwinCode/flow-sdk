@@ -104,7 +104,7 @@ Set these as environment variables, or in `flow.ClientOpts` (code wins).
 | `FLOW_SIGNING_KEY` | The app's own signing key. Checks calls from the engine and signs sync. Required unless dev. |
 | `FLOW_SIGNING_KEY_FALLBACK` | The app's old key while rotating. |
 | `FLOW_EVENT_KEY` | For `client.Send` and `client.SendMany`. |
-| `FLOW_BASE_URL` | Engine URL. Default: `https://worker.clevixstudio.com` (`flow.DefaultBaseURL`). Set it only if you run your own engine. |
+| `FLOW_BASE_URL` | Engine URL. Default: `https://worker.flow.clevixstudio.com` (`flow.DefaultBaseURL`). Set it only if you run your own engine. |
 | `FLOW_DEV` | `1` turns off signature checks. |
 
 Without a signing key, and not in dev mode, `Serve()` answers every request
