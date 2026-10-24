@@ -3,10 +3,10 @@
 How an app's SDK talks to the engine. Both SDKs (TypeScript in `packages/flow`, Go at
 the repo root) follow this page exactly, so the engine cannot tell them apart and a
 TypeScript function can `step.invoke` a Go function. The wire types are in
-[`packages/protocol/src/types.ts`](../packages/protocol/src/types.ts); this page says how to use them.
+[`packages/protocol/src/types.ts`](https://github.com/eadwinCode/flow-sdk/blob/main/packages/protocol/src/types.ts); this page says how to use them.
 
 Test vectors for step IDs, signatures, answer signatures and the bearer token are in
-[`testdata/vectors.json`](../testdata/vectors.json). Both SDKs test against that file.
+[`testdata/vectors.json`](https://github.com/eadwinCode/flow-sdk/blob/main/testdata/vectors.json). Both SDKs test against that file.
 The engine's conformance suite, in the engine repo, runs both SDKs against a real
 engine.
 

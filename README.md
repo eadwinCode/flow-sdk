@@ -166,6 +166,9 @@ go test ./...
 Use `bun run test`, not `bun test`: `bun test` is Bun's own test runner, and the
 tests here run on vitest.
 
+The docs in `docs/` are also a website, built with VitePress. `bun run docs:dev`
+serves it on your machine, and `bun run docs:build` checks that every link works.
+
 The engine pins a release of this repo. When a change needs the engine too (for
 example a protocol change), see "Working with the engine" in
 [RELEASING.md](RELEASING.md).

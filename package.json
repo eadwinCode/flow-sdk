@@ -1,6 +1,7 @@
 {
   "name": "flow-sdk",
   "private": true,
+  "type": "module",
   "workspaces": [
     "packages/*"
   ],
@@ -11,9 +12,13 @@
   "scripts": {
     "typecheck": "bun run --workspaces typecheck",
     "test": "bun run --workspaces test",
-    "build": "bun run --workspaces build"
+    "build": "bun run --workspaces build",
+    "docs:dev": "vitepress dev docs",
+    "docs:build": "vitepress build docs",
+    "docs:preview": "vitepress preview docs"
   },
   "devDependencies": {
-    "typescript": "6.0.3"
+    "typescript": "6.0.3",
+    "vitepress": "1.6.4"
   }
 }

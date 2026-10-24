@@ -261,7 +261,7 @@ after the step did its work. Use the step's idempotency key with outside APIs (s
 
 ## Upgrading the SDK
 
-Read the [changelog](../CHANGELOG.md) first. Then:
+Read the [changelog](https://github.com/eadwinCode/flow-sdk/blob/main/CHANGELOG.md) first. Then:
 
 - TypeScript: change the version in both places of the `.tgz` URL and install.
 - Go: `go get github.com/eadwinCode/flow-sdk@vX.Y.Z` and `go mod tidy`.

@@ -7,6 +7,8 @@
   `DEFAULT_BASE_URL` in TypeScript). The old host, `https://worker.clevixstudio.com`,
   still works for now, so apps on older SDKs keep running. It will be turned off
   later. If you set `FLOW_BASE_URL` to the old host, change it to the new one.
+- **Docs website:** the guides in `docs/` are now also built as a website with
+  VitePress, and put on GitHub Pages from `main`.
 - **This repo uses Bun instead of pnpm** to install, test and pack. Apps change
   nothing: the release `.tgz` files hold the same files as before.
 
