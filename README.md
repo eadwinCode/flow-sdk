@@ -154,14 +154,17 @@ use Watch → Custom → Releases on this repo.
 
 ## Develop
 
-Needs Go 1.27+, Node 22+ and pnpm 9.
+Needs Go 1.27+, Node 22+ and Bun 1.4+.
 
 ```bash
-pnpm install
-pnpm typecheck
-pnpm test
+bun install
+bun run typecheck
+bun run test
 go test ./...
 ```
+
+Use `bun run test`, not `bun test`: `bun test` is Bun's own test runner, and the
+tests here run on vitest.
 
 The engine pins a release of this repo. When a change needs the engine too (for
 example a protocol change), see "Working with the engine" in

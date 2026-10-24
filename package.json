@@ -1,14 +1,17 @@
 {
   "name": "flow-sdk",
   "private": true,
-  "packageManager": "pnpm@9.14.2",
+  "workspaces": [
+    "packages/*"
+  ],
+  "packageManager": "bun@1.4.2",
   "engines": {
     "node": ">=22"
   },
   "scripts": {
-    "typecheck": "pnpm -r typecheck",
-    "test": "pnpm -r test",
-    "build": "pnpm -r build"
+    "typecheck": "bun run --workspaces typecheck",
+    "test": "bun run --workspaces test",
+    "build": "bun run --workspaces build"
   },
   "devDependencies": {
     "typescript": "6.0.3"

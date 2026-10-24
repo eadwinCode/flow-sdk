@@ -23,7 +23,7 @@ the four versions match the tag, and makes the GitHub release with
 `clevix-flow-X.Y.Z.tgz` and `clevix-protocol-X.Y.Z.tgz`. Go needs no file: `go get`
 reads the tag.
 
-To build the files without releasing:
+To build the files without releasing (needs Bun and Node, like the checks):
 
 ```bash
 scripts/release.sh 0.2.0 /tmp/release
