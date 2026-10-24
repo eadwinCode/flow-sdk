@@ -30,11 +30,24 @@ TypeScript and Go side by side; use the one your app is written in.
 
 ## 1. Get your app's keys
 
-You need an account on the engine's dashboard. The SDK talks to
-`https://worker.flow.clevixstudio.com` unless you set `FLOW_BASE_URL` (you run your own
-engine).
+First get an account and a workspace on the dashboard,
+[dashboard.flow.clevixstudio.com](https://dashboard.flow.clevixstudio.com):
 
-In the dashboard, open **Apps** and click **Add app**:
+1. **Sign up**, then click the link in the email you get to check your address.
+2. **Make a workspace, or join one.** A workspace is your team's space: its apps,
+   runs and keys. If someone invited you, sign up from the link in your invite and
+   you join their workspace.
+3. **Pick a plan** for a new workspace. You can add apps only once it has one. If you
+   joined a team's workspace, it already has a plan.
+
+Apps and keys belong to one workspace. An event key only starts runs of the apps in
+its own workspace. To add an app and make keys, your role in the workspace must be
+Owner, Admin or Developer.
+
+The SDK talks to `https://worker.flow.clevixstudio.com` unless you set
+`FLOW_BASE_URL` (you run your own engine).
+
+In your workspace, open **Apps** and click **Add app**:
 
 1. Type your **app ID**: the ID you give the app in its code (`new Flow({ id: "shop" })`
    or `flow.ClientOpts{AppID: "shop"}`), for example `shop`.
@@ -50,8 +63,8 @@ them in code or in git. Then click **I put it in the app**: the dialog asks for 
 endpoint's URL. You can leave it open, or close it and come back after step 5
 (**Add app**, type the same app ID, **It has a key: connect**).
 
-Other senders (a backend, a script) get their own event key on the **Keys** page,
-one per sender, so you can revoke one without cutting off the rest.
+Other senders (a backend, a script) get their own event key on the workspace's
+**Keys** page, one per sender, so you can revoke one without cutting off the rest.
 
 ## 2. Install the SDK
 
