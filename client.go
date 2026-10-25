@@ -76,7 +76,7 @@ type Client struct {
 
 // DefaultBaseURL is the engine URL when neither ClientOpts.BaseURL nor
 // FLOW_BASE_URL is set. Self-hosters set FLOW_BASE_URL.
-const DefaultBaseURL = "https://worker.clevixstudio.com"
+const DefaultBaseURL = "https://worker.flow.clevixstudio.com"
 
 func pick(opt *string, env string) string {
 	if opt != nil {

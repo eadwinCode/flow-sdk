@@ -570,7 +570,7 @@ describe("manifest and sync", () => {
 
 describe("engine URL", () => {
   it("is the option, else FLOW_BASE_URL, else the default", () => {
-    expect(DEFAULT_BASE_URL).toBe("https://worker.clevixstudio.com");
+    expect(DEFAULT_BASE_URL).toBe("https://worker.flow.clevixstudio.com");
     expect(new Flow({ id: "a" }).settings({}).baseUrl).toBe(DEFAULT_BASE_URL);
     expect(new Flow({ id: "a" }).settings({ FLOW_BASE_URL: "https://mine.example.com" }).baseUrl).toBe("https://mine.example.com");
     expect(new Flow({ id: "a", baseUrl: "https://opt.example.com" }).settings({ FLOW_BASE_URL: "https://mine.example.com" }).baseUrl).toBe(
@@ -721,7 +721,7 @@ describe("big state (useApi)", () => {
     const handle = serve({ client: flow, functions: [flow.createFunction({ id: "fn" }, { event: "user/signed-up" }, () => "ran")] });
     const res = await post(handle, useApi());
     expect(res.status).toBe(200);
-    expect(calls[0]!.url).toMatch(/^https:\/\/worker\.clevixstudio\.com\/runs\//);
+    expect(calls[0]!.url).toMatch(/^https:\/\/worker\.flow\.clevixstudio\.com\/runs\//);
   });
 
   it("needs a signing key even in dev mode (same as the Go SDK)", async () => {

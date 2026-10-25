@@ -28,7 +28,7 @@
   },
   "scripts": {
     "build": "tsup",
-    "prepack": "pnpm build",
+    "prepack": "bun run build",
     "typecheck": "tsc -p .",
     "test": "vitest run"
   },

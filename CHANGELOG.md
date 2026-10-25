@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased
+
+- **New default engine URL: `https://worker.flow.clevixstudio.com`.** Both SDKs
+  use it when `FLOW_BASE_URL` is not set (`flow.DefaultBaseURL` in Go,
+  `DEFAULT_BASE_URL` in TypeScript). The old host, `https://worker.clevixstudio.com`,
+  still works for now, so apps on older SDKs keep running. It will be turned off
+  later. If you set `FLOW_BASE_URL` to the old host, change it to the new one.
+- **Docs website:** the guides in `docs/` are now also built as a website with
+  VitePress, and put on GitHub Pages from `main`.
+- **This repo uses Bun instead of pnpm** to install, test and pack. Apps change
+  nothing: the release `.tgz` files hold the same files and the same code as
+  before. Only small details of the packed `package.json` differ (no `prepack`
+  script, keys in another order).
+
 ## v0.6.5
 
 - **Sync at boot: a deploy needs no Resync.** When the app starts, both SDKs ask the
@@ -51,7 +65,7 @@
   `STREAM_ANSWER_HEADERS`, `STREAM_HEARTBEAT`, `DEFAULT_HEARTBEAT_MS`.
 - The Express adapter now sends answers chunk by chunk instead of all at once.
 
-## Unreleased (docs only)
+## After v0.5.0 (docs only, shipped in v0.6.0)
 
 - **Docs fix for v0.5.0:** the engine turns on "answers must be signed" for an app
   only when an admin's **Add app**, **Resync** or **Change URL** gets a signed

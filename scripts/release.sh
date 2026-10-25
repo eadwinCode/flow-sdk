@@ -24,9 +24,44 @@ check packages/protocol/package.json "$(node -p "require('$root/packages/protoco
 check packages/flow/src/version.ts "$(sed -n 's/.*SDK_VERSION = "\(.*\)".*/\1/p' "$root/packages/flow/src/version.ts")"
 check flow.go "$(sed -n 's/^const Version = "\(.*\)"/\1/p' "$root/flow.go")"
 
+# bun pm pack turns workspace:* into the real version. But it does not use
+# publishConfig, and it does not add the LICENSE at the repo root. So while each
+# package is packed, its package.json takes the fields from publishConfig (the
+# dist exports and types), and LICENSE is copied in. Both are put back after,
+# even if a step fails.
+backup="$(mktemp -d)"
+restore() {
+  local pkg="$1"
+  if [ -f "$backup/$pkg.json" ]; then
+    mv "$backup/$pkg.json" "$root/packages/$pkg/package.json"
+    rm -f "$root/packages/$pkg/LICENSE"
+  fi
+}
+trap 'restore protocol; restore flow; rm -rf "$backup"' EXIT
+
 rm -f "$out"/clevix-*.tgz
 for pkg in protocol flow; do
-  (cd "$root/packages/$pkg" && pnpm pack --pack-destination "$out" >/dev/null)
+  dir="$root/packages/$pkg"
+  if [ -e "$dir/LICENSE" ]; then
+    echo "$dir/LICENSE should not exist: it is copied from the repo root" >&2
+    exit 1
+  fi
+  (cd "$dir" && bun run build >/dev/null)
+  cp "$dir/package.json" "$backup/$pkg.json"
+  cp "$root/LICENSE" "$dir/LICENSE"
+  node -e '
+    const fs = require("fs");
+    const file = process.argv[1];
+    const pkg = JSON.parse(fs.readFileSync(file, "utf8"));
+    for (const key of ["exports", "types", "main", "module", "bin"]) {
+      if (pkg.publishConfig && key in pkg.publishConfig) pkg[key] = pkg.publishConfig[key];
+    }
+    delete pkg.publishConfig;
+    if (pkg.scripts) delete pkg.scripts.prepack; // the build above already ran
+    fs.writeFileSync(file, JSON.stringify(pkg, null, 2) + "\n");
+  ' "$dir/package.json"
+  (cd "$dir" && bun pm pack --ignore-scripts --destination "$out" --quiet >/dev/null)
+  restore "$pkg"
   test -f "$out/clevix-$pkg-$version.tgz"
 done
 ls -l "$out"/clevix-*.tgz

@@ -196,7 +196,7 @@ Events are kept 4 days.
 
 When a run's state passes 4 MB, the engine stops sending it in each call, and the
 SDK loads it from the engine instead, at `FLOW_BASE_URL` (default
-`https://worker.clevixstudio.com`). If you run your own engine, set it in every app,
+`https://worker.flow.clevixstudio.com`). If you run your own engine, set it in every app,
 even ones that never send events.
 
 ## Troubleshooting
@@ -261,7 +261,7 @@ after the step did its work. Use the step's idempotency key with outside APIs (s
 
 ## Upgrading the SDK
 
-Read the [changelog](../CHANGELOG.md) first. Then:
+Read the [changelog](https://github.com/eadwinCode/flow-sdk/blob/main/CHANGELOG.md) first. Then:
 
 - TypeScript: change the version in both places of the `.tgz` URL and install.
 - Go: `go get github.com/eadwinCode/flow-sdk@vX.Y.Z` and `go mod tidy`.

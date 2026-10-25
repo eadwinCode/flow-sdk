@@ -12,7 +12,7 @@
 /** What `flow.realtime.token()` returns, and what `refreshToken` must give back. */
 export interface RealtimeToken {
   token: string;
-  /** The engine's WebSocket URL, e.g. "wss://worker.clevixstudio.com/v1/realtime/connect". */
+  /** The engine's WebSocket URL, e.g. "wss://worker.flow.clevixstudio.com/v1/realtime/connect". */
   url: string;
   channel: string;
   topics: string[];

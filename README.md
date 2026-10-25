@@ -133,7 +133,7 @@ Both SDKs read the same env vars. Values passed in code win.
 | `FLOW_SIGNING_KEY` | Your app's own signing key, from **Add app** in the dashboard. Checks calls from the engine and signs sync. Required unless dev mode. |
 | `FLOW_SIGNING_KEY_FALLBACK` | The app's old key while you rotate it. |
 | `FLOW_EVENT_KEY` | For sending events from your app. |
-| `FLOW_BASE_URL` | The engine's URL. Default: `https://worker.clevixstudio.com`. Set it only if you run your own engine. |
+| `FLOW_BASE_URL` | The engine's URL. Default: `https://worker.flow.clevixstudio.com`. Set it only if you run your own engine. |
 | `FLOW_DEV` | `1` turns off signature checks. For local work only. |
 
 ## Versions
@@ -154,14 +154,20 @@ use Watch → Custom → Releases on this repo.
 
 ## Develop
 
-Needs Go 1.27+, Node 22+ and pnpm 9.
+Needs Go 1.27+, Node 22+ and Bun 1.4+.
 
 ```bash
-pnpm install
-pnpm typecheck
-pnpm test
+bun install
+bun run typecheck
+bun run test
 go test ./...
 ```
+
+Use `bun run test`, not `bun test`: `bun test` is Bun's own test runner, and the
+tests here run on vitest.
+
+The docs in `docs/` are also a website, built with VitePress. `bun run docs:dev`
+serves it on your machine, and `bun run docs:build` checks that every link works.
 
 The engine pins a release of this repo. When a change needs the engine too (for
 example a protocol change), see "Working with the engine" in

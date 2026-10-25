@@ -1,0 +1,58 @@
+# Builds the docs/ folder with VitePress and puts it on GitHub Pages.
+name: Docs
+
+on:
+  push:
+    branches: [main]
+    # Only build again when something the site shows changes.
+    paths:
+      - "docs/**"
+      - ".github/workflows/docs.yml"
+      - "package.json"
+      - "bun.lock"
+  workflow_dispatch:
+
+# The build only reads the repo. Only the deploy job writes to Pages (below).
+permissions:
+  contents: read
+
+# One deploy at a time. `cancel-in-progress: false` so a deploy that has started
+# finishes instead of being stopped halfway.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # VitePress reads the git history for "last updated" times.
+          fetch-depth: 0
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: package.json # the packageManager version
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - run: bun install --frozen-lockfile
+      - run: bun run docs:build
+      - uses: actions/configure-pages@v6
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: docs/.vitepress/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    # Write the Pages deploy, and make the deploy token.
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v5
