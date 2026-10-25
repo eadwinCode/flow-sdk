@@ -57,7 +57,7 @@ for pkg in protocol flow; do
       if (pkg.publishConfig && key in pkg.publishConfig) pkg[key] = pkg.publishConfig[key];
     }
     delete pkg.publishConfig;
-    delete pkg.scripts.prepack; // the build above already ran
+    if (pkg.scripts) delete pkg.scripts.prepack; // the build above already ran
     fs.writeFileSync(file, JSON.stringify(pkg, null, 2) + "\n");
   ' "$dir/package.json"
   (cd "$dir" && bun pm pack --ignore-scripts --destination "$out" --quiet >/dev/null)

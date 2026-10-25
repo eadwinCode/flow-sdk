@@ -10,7 +10,9 @@
 - **Docs website:** the guides in `docs/` are now also built as a website with
   VitePress, and put on GitHub Pages from `main`.
 - **This repo uses Bun instead of pnpm** to install, test and pack. Apps change
-  nothing: the release `.tgz` files hold the same files as before.
+  nothing: the release `.tgz` files hold the same files and the same code as
+  before. Only small details of the packed `package.json` differ (no `prepack`
+  script, keys in another order).
 
 ## v0.6.5
 
