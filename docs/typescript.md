@@ -1,18 +1,13 @@
-# TypeScript SDK (`@clevix/flow`)
+# TypeScript reference
 
-> This page is the TypeScript reference: install, setup and settings. For how to
-> use the features (steps, events, cron, flow control), read the
-> [guides](./), starting with [getting started](getting-started.md).
-
-The TypeScript SDK for clevix-worker. Your app defines functions made of steps. The
-engine runs them, saves each step's result, and retries steps that fail. The API
-follows Inngest's `inngest` package.
+The TypeScript SDK is `@clevix/flow`. This page lists what it has. For how to use it,
+start with the [Quick start](getting-started.md).
 
 ## Install
 
-Each release has the package as a `.tgz` file on its
-[GitHub release](https://github.com/eadwinCode/flow-sdk/releases). Install it
-by URL. No npm account or login is needed.
+The package is not on the npm registry. Each release puts it on its
+[GitHub release](https://github.com/eadwinCode/flow-sdk/releases) as a `.tgz` file.
+Install it by URL; no npm account or login is needed.
 
 ```bash
 npm install https://github.com/eadwinCode/flow-sdk/releases/download/v0.6.5/clevix-flow-0.6.5.tgz
@@ -27,154 +22,168 @@ pnpm, yarn and bun take the same URL (`pnpm add <url>`, `yarn add <url>`,
 }
 ```
 
-and you import from `@clevix/flow` as usual. The lockfile saves a hash of the
-file, so installs stay the same until you change the URL.
+and you import from `@clevix/flow` as usual. The lockfile keeps a hash of the file.
 
 To upgrade, put the new version in both places in the URL (`v0.6.5` and
-`clevix-flow-0.6.5.tgz`) and install again. `npm update` does not see new
-versions of a URL install, and neither do Dependabot or Renovate, so watch the
-releases page (Watch → Custom → Releases on GitHub).
+`clevix-flow-0.6.5.tgz`) and install again. `npm update`, Dependabot and Renovate do
+not see new versions of a URL install, so watch the releases (on GitHub: **Watch**,
+**Custom**, **Releases**).
 
-It is ESM only and ships its own types. It runs on Cloudflare Workers and Node 20+.
-For Hono or Express, install that framework too.
+The package is ESM only and has its own types. It runs on Node 20 or later and on
+Cloudflare Workers. For Hono, Express or React, install that package too:
+`@clevix/flow` does not depend on them.
 
-## Example (Cloudflare Workers)
+v0.6.5 talks to `https://worker.clevixstudio.com` when `FLOW_BASE_URL` is not set.
+The next release changes the default to `https://worker.flow.clevixstudio.com`. Both
+reach the same engine today.
 
-```ts
-import { Flow, NonRetriableError } from "@clevix/flow";
-import { serve } from "@clevix/flow/cloudflare";
+## Serve your functions
 
-const flow = new Flow({ id: "shop" });
+Each adapter wraps the same handler. The code is in
+[`examples/ts/adapters/`](https://github.com/eadwinCode/flow-sdk/tree/main/examples/ts/adapters).
 
-const onboarding = flow.createFunction(
-  { id: "user-onboarding", retries: 5 },
-  { event: "user/signed-up" },
-  async ({ event, step }) => {
-    const user = await step.run("load-user", () => loadUser(event.data.userId));
-    if (!user) throw new NonRetriableError("no such user");
-    await step.run("send-welcome", () => sendEmail(user, "welcome"));
-    await step.sleep("wait-3-days", "3d");
-    const done = await step.waitForEvent("wait-onboarded", {
-      event: "user/onboarded",
-      match: "data.userId",
-      timeout: "7d",
-    });
-    if (!done) await step.run("nudge", () => sendEmail(user, "nudge"));
-  },
-);
+### Cloudflare Workers
 
-export default serve({ client: flow, functions: [onboarding] });
-```
+<<< @/../examples/ts/adapters/cloudflare-worker.ts#worker
 
-## Other frameworks
-
-Each adapter is a thin wrapper around the same handler. Install the framework
-yourself; `@clevix/flow` does not depend on it.
-
-Hono (on Workers, `c.env` is passed through, so settings can live there):
-
-```ts
-import { serve } from "@clevix/flow/hono";
-
-app.on(["GET", "PUT", "POST"], "/api/flow", serve({ client: flow, functions: [onboarding] }));
-```
-
-Next.js App Router, in `app/api/flow/route.ts`:
-
-```ts
-import { serve } from "@clevix/flow/next";
-
-export const { GET, POST, PUT } = serve({ client: flow, functions: [onboarding] });
-```
-
-Express 5:
-
-```ts
-import { serve } from "@clevix/flow/express";
-
-app.use("/api/flow", serve({ client: flow, functions: [onboarding] }));
-app.use(express.json()); // after it, or not on this path
-```
-
-The signature is checked over the raw body, so the Express adapter must see the
-body as it came. It reads the body itself, or takes it from `express.raw()` or
-`express.text()`. If `express.json()` ran first, calls fail with a 500 that says so:
-mount the adapter before `express.json()`, or put `express.raw({ type: "*/*" })` on
-its path. The URL a `PUT` sync sends uses `req.protocol` and the host, so behind a
-proxy set `app.set("trust proxy", ...)`. An app added by URL in the dashboard keeps
-that URL, whatever a sync says.
-
-## Settings
-
-Each setting can go in `new Flow({ ... })` or in an env var. A value in code wins.
-
-| Option | Env var | What it is for |
-| --- | --- | --- |
-| `signingKey` | `FLOW_SIGNING_KEY` | Your app's own signing key. Checks that calls really come from the engine, and proves who you are when you sync. Required unless dev mode. Secret. |
-| `signingKeyFallback` | `FLOW_SIGNING_KEY_FALLBACK` | The app's old signing key while you swap keys. Secret. |
-| `eventKey` | `FLOW_EVENT_KEY` | Lets `flow.send` send events. Only needed if this app sends events. Secret. |
-| `baseUrl` | `FLOW_BASE_URL` | The engine's URL, for sync, `flow.send`, and big runs (over 4 MiB the SDK loads the state from the engine). Default: `https://worker.flow.clevixstudio.com` (`DEFAULT_BASE_URL`). Set it only if you run your own engine. |
-| `isDev` | `FLOW_DEV=1` | Turns off signature checks. For local work only, never on a public app. |
-
-`serve` takes these options too:
-
-| Option | What it is for |
-| --- | --- |
-| `syncOnBoot` | Default `true`. The app checks the engine's copy of its functions and syncs when they changed, so a deploy needs no Resync. Express: when `serve` is called. Next.js, Hono and Workers: on the first request, in the background (on Workers in `ctx.waitUntil`). Then it checks again every 5 minutes: a timer that does not keep Node alive, or on Workers the first request after that time. `false` turns it all off. See [production.md](production.md#sync-on-every-deploy). |
-| `streaming` | Default on. `false`, or `{ heartbeatMs }`. See "Streamed answers" in [protocol.md](protocol.md). |
-
-If you call the plain fetch handler from `@clevix/flow` in your own Worker, pass
-`ctx` as the third argument (`handler(request, env, ctx)`), so the sync at boot can
-finish after the answer.
-
-Both keys come from the dashboard's **Add app** dialog (the event key also from the
-Keys page). Each is shown once, when you make it.
-
-In code:
-
-```ts
-const flow = new Flow({
-  id: "shop",
-  signingKey: "signkey-...",   // better: read it from a secret, not a string in code
-  eventKey: "...",
-  baseUrl: "https://flow.example.com", // only for your own engine
-});
-```
-
-Or leave them out and set env vars. On Workers, `serve` reads them from the
-Worker's `env`:
+The whole Worker is the endpoint. Settings are read from the Worker's `env`:
 
 ```bash
 wrangler secret put FLOW_SIGNING_KEY
 wrangler secret put FLOW_EVENT_KEY
 ```
 
-Running your own engine? Put its URL in `vars` in `wrangler.jsonc`:
-`"vars": { "FLOW_BASE_URL": "https://flow.example.com" }`.
+To serve the endpoint on one path of a bigger Worker, use Hono.
 
-Where each key is used:
+### Hono
 
-- The **signing key** is used by `serve` only. You never pass it anywhere else.
-- The **event key** is used by `flow.send`. On Workers, pass the handler's `env` so it
-  can find `FLOW_EVENT_KEY`: `await flow.send({ name: "user/signed-up", data }, { env })`.
-  Any other service that sends events needs its own event key: it posts to
-  `POST {FLOW_BASE_URL}/e` with `Authorization: Bearer <event key>`.
+<<< @/../examples/ts/adapters/hono.ts#hono
+
+On Workers, `c.env` is passed on, so settings can live in the Worker's `env`. If a
+middleware already read the body, the adapter uses Hono's copy of the raw text.
+
+### Next.js (App Router)
+
+In `app/api/flow/route.ts`:
+
+<<< @/../examples/ts/adapters/next-route.ts#next
+
+Settings are read from `process.env`.
+
+### Express
+
+<<< @/../examples/ts/adapters/express-app.ts#express
+
+The signature is checked over the raw body, so the adapter must see the body as it
+came. It reads the body itself, or takes it from `express.raw()` or `express.text()`.
+If `express.json()` ran first, calls fail with `500 BodyAlreadyParsed`: mount the
+endpoint before `express.json()`, or put `express.raw({ type: "*/*" })` on its path.
+Behind a proxy, set `app.set("trust proxy", ...)` (only for your own proxy) so the
+URL a `PUT` sync sends uses the real host and `https`.
+
+### Any other runtime
+
+`serve` from `@clevix/flow` is a plain fetch handler:
+`(request, env?, ctx?) => Promise<Response>`. On Workers, pass `ctx` as the third
+argument so the sync at boot can finish after the answer.
 
 ## The endpoint
 
-- `POST` runs a function. The engine signs it.
-- `PUT` syncs: it sends your functions to the engine. The SDK also syncs by itself
-  when it starts (see below), so this is a backup: `curl -X PUT https://your-app/api/flow`.
-- `GET` returns the manifest (signed calls only, unless dev mode).
+| Method | What it does |
+| --- | --- |
+| `POST` | Runs a function. Signed by the engine. |
+| `PUT` | Syncs: sends the manifest to the engine, and gives back its answer. `curl -X PUT https://your-app/api/flow`. |
+| `GET` | Gives the manifest. Only for signed calls (the engine's **Add app**, **Resync**, **Change URL** and its pings while the app is down); otherwise `401`. |
 
-## Good to know
+## `new Flow(options)`
 
-- Code outside `step.run` runs again on every call. Put side effects in steps.
-- Steps can run more than once. `step.run` passes `{ idempotencyKey }` to its
-  callback: send it to outside APIs.
-- Run steps in parallel with `Promise.all`.
-- A step that runs out of retries throws a `StepError` into your function. Catch it
-  to undo earlier work.
+| Option | Env var | What it is |
+| --- | --- | --- |
+| `id` | | Required. The app ID: letters, digits, `-` and `_`, starting with a letter or digit, up to 64. |
+| `signingKey` | `FLOW_SIGNING_KEY` | The app's signing key. |
+| `signingKeyFallback` | `FLOW_SIGNING_KEY_FALLBACK` | The old key while you rotate. |
+| `eventKey` | `FLOW_EVENT_KEY` | For `flow.send`. |
+| `baseUrl` | `FLOW_BASE_URL` | The engine's URL. |
+| `isDev` | `FLOW_DEV=1` | Turns off signature checks. Local tests only. |
+| `fetch` | | The `fetch` to use. Default: the global one. |
 
-Both SDKs speak the same wire protocol and pass the same conformance suite, so
-a TypeScript app can `step.invoke` a Go function and the other way round.
+A value in code wins over the env var. See [Settings](settings.md) for what each does
+when it is not set.
+
+## `flow.createFunction(options, trigger, handler)`
+
+Gives back a function to pass to `serve`. It throws at once on a bad ID, no trigger,
+or a bad trigger. The options are in [Functions and steps](functions.md#all-function-options);
+the triggers in [Triggers](functions.md#triggers).
+
+The handler gets `{ event, events, step, runId, attempt }`, and its return value is
+the run's output.
+
+`step` has:
+
+| Method | Gives back |
+| --- | --- |
+| `step.run(id, fn)` | `fn`'s result. `fn` gets `{ stepId, idempotencyKey, attempt }`. |
+| `step.sleep(id, duration)` | nothing |
+| `step.sleepUntil(id, time)` | nothing. `time` is a `Date`, ms, or ISO text. |
+| `step.waitForEvent(id, { event, timeout, match?, if? })` | the event, or `null` on timeout |
+| `step.sendEvent(id, event or events)` | `{ ids }` |
+| `step.invoke(id, { function, data?, timeout? })` | the child's return value |
+
+Durations are text like `"500ms"`, `"30s"`, `"1h30m"`, `"3d"`, `"2w"` (units `ms`,
+`s`, `m`, `h`, `d`, `w`, no spaces), or a number of ms.
+
+## `flow.send(events, { env }?)`
+
+Sends one event or a list of up to 100. Gives back `{ ids, status }`. Throws
+`sending events failed (<status>): <engine error>` on any answer but `200`, and
+`flow.send needs an event key (eventKey or FLOW_EVENT_KEY)` without a key. It does
+not retry. See [Events](events.md).
+
+## `flow.realtime`
+
+| Method | What it does |
+| --- | --- |
+| `publish({ channel, topic, data }, { env }?)` | Sends `data` to the browsers on that topic. Throws on failure. |
+| `token({ channel, topics }, { env }?)` | A token for one browser. Throws on failure. |
+
+The browser side is `subscribe` from `@clevix/flow/realtime`, and `useRealtime` from
+`@clevix/flow/react`. See [Realtime](realtime.md).
+
+## Errors
+
+| Class | Use |
+| --- | --- |
+| `NonRetriableError(message)` | Throw it to fail now, with no more tries. |
+| `RetryAfterError(message, at)` | Throw it to try again at `at`: a `Date`, ms, or a duration like `"30s"`. |
+| `StepError` | What a step call throws when the step failed for good. Has `name`, `message` and `stepId`. |
+
+See [Errors and retries](errors.md).
+
+## `serve(options)`
+
+| Option | What it is |
+| --- | --- |
+| `client` | Your `Flow`. |
+| `functions` | The functions to serve. Each `onFailure` adds its `<id>-failure` function. |
+| `syncOnBoot` | Default `true`. The [sync at boot](production.md#sync-on-every-deploy). `false` turns it off. |
+| `streaming` | Default on. `false`, or `{ heartbeatMs }` (default 20000). Lets a long step run behind a proxy that ends quiet calls. See [Protocol](protocol.md#streamed-answers-sdk-v060-and-later). |
+
+`serve` throws at once if two functions have the same ID, or a function was made by
+a `Flow` with another app ID.
+
+## Other exports
+
+| Export | What |
+| --- | --- |
+| `DEFAULT_BASE_URL` | The engine URL used when none is set. |
+| `SDK_VERSION` | This SDK's version. |
+| `buildManifest`, `manifestHash` | Build the manifest and its hash, as sync sends them. |
+| `hashStepId(id, n)` | The hashed ID of a step ID for its `n`th use. |
+| Types | `FunctionOptions`, `Trigger`, `HandlerContext`, `StepTools`, `FlowFunction`, `FlowEvent`, `IncomingEvent`, `Json`, `RealtimeToken`, `RealtimeMessage`, and more. |
+
+Subpaths: `@clevix/flow/cloudflare`, `@clevix/flow/hono`, `@clevix/flow/next`,
+`@clevix/flow/express`, `@clevix/flow/realtime`, `@clevix/flow/react`.
+
+Both SDKs speak the same protocol, so a TypeScript function can `step.invoke` a Go
+function, and the other way round.

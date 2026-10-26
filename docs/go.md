@@ -1,18 +1,15 @@
-# Go SDK
+# Go reference
 
-> This page is the Go reference: install, setup and settings. For how to
-> use the features (steps, events, cron, flow control), read the
-> [guides](./), starting with [getting started](getting-started.md).
-
-Write durable functions in Go and run them on the clevix-worker engine. The API
-follows Inngest's `inngestgo`. Standard library only.
+The Go SDK is the module `github.com/eadwinCode/flow-sdk`. It uses the standard
+library only. This page lists what it has. For how to use it, start with the
+[Quick start](getting-started.md).
 
 ## Install
 
-Needs Go 1.27+.
+Needs Go 1.27 or later.
 
 ```bash
-go get github.com/eadwinCode/flow-sdk@latest
+go get github.com/eadwinCode/flow-sdk@v0.6.5
 ```
 
 The module is public, so no login or `GOPRIVATE` is needed. Import it as:
@@ -25,148 +22,127 @@ import (
 )
 ```
 
-Pin a version with `@v0.6.5` in place of `@latest`. To upgrade, run `go get`
-again with the new version, then `go mod tidy`. The versions are the
-[releases](https://github.com/eadwinCode/flow-sdk/releases).
+To upgrade, run `go get` again with the new version, then `go mod tidy`. Right after a
+release, the Go proxy can take a few minutes to see the new tag; if `go get` says
+`unknown revision`, wait, or use `GOPROXY=direct`.
 
-A new release can take a few minutes to show up through the Go proxy. If
-`go get ...@vX.Y.Z` says `unknown revision` right after a release, wait a bit or
-run it with `GOPROXY=direct`.
+v0.6.5 talks to `https://worker.clevixstudio.com` when `FLOW_BASE_URL` is not set.
+The next release changes the default to `https://worker.flow.clevixstudio.com`
+(`flow.DefaultBaseURL`). Both reach the same engine today.
 
-## Example
+## Serve your functions
 
-```go
-package main
+`client.Serve()` gives an `http.Handler` for the endpoint. Mount it on any path:
 
-import (
-	"context"
-	"errors"
-	"net/http"
-	"time"
+<<< @/../examples/go/quickstart/main.go#serve
 
-	flow "github.com/eadwinCode/flow-sdk"
-	"github.com/eadwinCode/flow-sdk/step"
-)
-
-type SignedUp struct {
-	UserID string `json:"userId"`
-}
-
-func main() {
-	client, err := flow.NewClient(flow.ClientOpts{AppID: "billing-service"})
-	if err != nil {
-		panic(err)
-	}
-
-	_, err = flow.CreateFunction(client,
-		flow.FunctionOpts{ID: "user-onboarding", Retries: flow.IntPtr(5)},
-		flow.EventTrigger("user/signed-up", nil),
-		func(ctx context.Context, in flow.Input[SignedUp]) (any, error) {
-			name, err := step.Run(ctx, "load-user", func(ctx context.Context) (string, error) {
-				return loadName(ctx, in.Event.Data.UserID)
-			})
-			if err != nil {
-				return nil, err
-			}
-			step.Sleep(ctx, "wait-3-days", 72*time.Hour)
-
-			_, err = step.WaitForEvent[flow.GenericEvent[SignedUp]](ctx, "wait-onboarded", step.WaitForEventOpts{
-				Event:   "user/onboarded",
-				Match:   flow.StrPtr("data.userId"),
-				Timeout: 7 * 24 * time.Hour,
-			})
-			if errors.Is(err, step.ErrEventNotReceived) {
-				return "nudged " + name, nil
-			}
-			return name, err
-		},
-	)
-	if err != nil {
-		panic(err)
-	}
-
-	// One endpoint: POST runs, PUT syncs, GET shows the manifest.
-	http.Handle("/api/flow", client.Serve())
-	_ = http.ListenAndServe(":8080", nil)
-}
-
-func loadName(ctx context.Context, id string) (string, error) { return "Ada", nil }
-```
-
-Add the app in the dashboard (**Apps → Add app**) by this endpoint's URL. After that, each deploy syncs by itself: the first `client.Serve()` checks the engine's copy of the functions in the background, and syncs when they changed (so call `Serve` after you made the functions). The first check waits 1 second, and logs a warning for any function made after `Serve`. It checks again every 5 minutes while the app runs; call `client.Close()` on shutdown to stop that (it waits for a check on its way). `ClientOpts{NoSyncOnBoot: true}` turns it all off. You can still sync by hand: **Resync** in the dashboard, or `curl -X PUT https://your-app/api/flow`. See [production.md](production.md#sync-on-every-deploy).
-
-## Settings
-
-Set these as environment variables, or in `flow.ClientOpts` (code wins).
-
-| Variable | Use |
+| Method | What it does |
 | --- | --- |
-| `FLOW_SIGNING_KEY` | The app's own signing key. Checks calls from the engine and signs sync. Required unless dev. |
-| `FLOW_SIGNING_KEY_FALLBACK` | The app's old key while rotating. |
-| `FLOW_EVENT_KEY` | For `client.Send` and `client.SendMany`. |
-| `FLOW_BASE_URL` | Engine URL. Default: `https://worker.flow.clevixstudio.com` (`flow.DefaultBaseURL`). Set it only if you run your own engine. |
-| `FLOW_DEV` | `1` turns off signature checks. |
+| `POST` | Runs a function. Signed by the engine. |
+| `PUT` | Syncs: sends the manifest to the engine, and gives back its answer. |
+| `GET` | Gives the manifest. Only for signed calls; otherwise `401`. |
 
-Without a signing key, and not in dev mode, `Serve()` answers every request
-with 500 `NoSigningKey`.
+The first `Serve()` also starts the [sync at boot](production.md#sync-on-every-deploy)
+in the background, after 1 second. Make every function before you call `Serve`: a
+function made after it logs a warning, and may be left out of the first sync. Call
+`client.Close()` on shutdown to stop the checks.
 
-Both keys come from the dashboard's **Add app** dialog (the event key also from
-the Keys page). Each is shown once, when you make it. In code:
+Without a signing key, and not in dev mode, `Serve()` logs a warning and answers
+every request with `500 NoSigningKey`.
+
+## `flow.NewClient(flow.ClientOpts{...})`
+
+| Field | Env var | What it is |
+| --- | --- | --- |
+| `AppID` | | Required. Letters, digits, `-` and `_`, starting with a letter or digit, up to 64. |
+| `SigningKey` | `FLOW_SIGNING_KEY` | The app's signing key. |
+| `SigningKeyFallback` | `FLOW_SIGNING_KEY_FALLBACK` | The old key while you rotate. |
+| `EventKey` | `FLOW_EVENT_KEY` | For `client.Send` and `client.SendMany`. |
+| `BaseURL` | `FLOW_BASE_URL` | The engine's URL. |
+| `Dev` | `FLOW_DEV=1` | Turns off signature checks. Local tests only. |
+| `HTTPClient` | | Used for sync and sending events. Default `http.DefaultClient`. |
+| `NoStreaming` | | Turns off [streamed answers](protocol.md#streamed-answers-sdk-v060-and-later). |
+| `HeartbeatInterval` | | Time between heartbeats in a streamed answer. Default 20s. |
+| `NoSyncOnBoot` | | Turns off the sync at boot. |
+
+The pointer fields (`*string`, `*bool`) are read from the env var when nil; a value
+you set wins. `flow.StrPtr`, `flow.IntPtr` and `flow.BoolPtr` make pointers.
+`NewClient` fails on a bad app ID, or a signing key not in the form
+`signkey-<64 hex>`.
+
+## `flow.CreateFunction(client, opts, trigger, handler)`
 
 ```go
-client, err := flow.NewClient(flow.ClientOpts{
-	AppID:      "billing",
-	SigningKey: flow.StrPtr(os.Getenv("MY_SIGNING_KEY")), // any source you like
-	EventKey:   flow.StrPtr(os.Getenv("MY_EVENT_KEY")),
-	BaseURL:    flow.StrPtr("https://flow.example.com"), // only for your own engine
-})
+func CreateFunction[T any](c *Client, opts FunctionOpts, trigger Triggerable, handler Handler[T]) (ServableFunction, error)
 ```
 
-Where each key is used:
+- `T` is the shape of the event's `data`. The SDK decodes the event JSON into
+  `flow.Input[T]`. If it can not, the call fails with no retry.
+- The handler is `func(ctx context.Context, in flow.Input[T]) (any, error)`. Its
+  first result is the run's output.
+- `in` has `Event` and `Events` (`flow.GenericEvent[T]`: `ID`, `Name`, `Data`,
+  `Timestamp`, `User`) and `InputCtx` (`FunctionID`, `RunID`, `Attempt`,
+  `MaxAttempts`).
+- The trigger is `flow.EventTrigger(name, ifExpr)`, `flow.CronTrigger(spec)`, or
+  `flow.MultipleTriggers{...}`.
+- The result's `FullyQualifiedID()` is `<appId>-<id>`, for `step.Invoke` and failure
+  handlers.
 
-- The **signing key** is used by `client.Serve()` only: to check calls from
-  the engine, and to sign the sync on `PUT`. Keep it secret.
-- The **event key** is used by `client.Send` and `client.SendMany`. Only
-  needed if this app sends events. Keep it secret.
+`FunctionOpts` has `ID`, `Name`, `Retries`, `Timeouts`, `CancelOn`, `Concurrency`,
+`Throttle`, `RateLimit`, `Debounce`, `BatchEvents`, `Priority`, `Idempotency` and
+`Singleton`. They are the same options as in TypeScript; see
+[Functions and steps](functions.md#all-function-options). Durations are
+`time.Duration`; the SDK sends them as whole seconds (`"90s"`) or else as ms.
 
-```go
-id, err := client.Send(ctx, flow.Event{Name: "user/signed-up", Data: map[string]any{"userId": "u_1"}})
-```
+## The `step` package
 
-## Things to know
+| Function | Gives back |
+| --- | --- |
+| `step.Run[T](ctx, id, func(ctx) (T, error))` | `T`, or a `*step.StepError` once the step failed for good |
+| `step.Sleep(ctx, id, d)` | `error` |
+| `step.SleepUntil(ctx, id, t)` | `error` |
+| `step.WaitForEvent[T](ctx, id, step.WaitForEventOpts{Event, Timeout, Match, If})` | `T` (for example `flow.GenericEvent[MyData]`), or `step.ErrEventNotReceived` on timeout |
+| `step.Send(ctx, id, events...)` | the event IDs |
+| `step.Invoke[T](ctx, id, step.InvokeOpts{FunctionID, Data, User, Timeout})` | the child's output as `T` |
+| `step.IdempotencyKey(ctx)` | inside a `Run` callback: `<runId>:<hashed step id>` |
+| `step.Repanic(r)` | call it first in any `recover()` around step calls |
 
-- **Replay.** The engine calls your function from the top each time. Finished
-  steps return their saved result. When the function reaches a new step, the
-  SDK runs it (or tells the engine about it) and stops the function with a
-  special panic that `Serve()` catches. If you use `recover()` around step
-  calls, call `step.Repanic(r)` first so that panic goes on.
-- **Step IDs** must not change between calls. Reusing an ID in a loop is fine.
-  Do not call steps from your own goroutines.
-- **Parallel steps.** Use `group.Parallel(ctx, fns...)`. Give each step inside
-  it its own ID.
-- **Errors.** An error (or a panic) in a `step.Run` callback fails that attempt;
-  the engine retries the step. This is the same as a thrown error in the
-  TypeScript SDK. A panic is reported with the name `Panic` and its stack.
-  Error names match the TypeScript SDK: `NonRetriableError` for
-  `flow.NoRetryError`, `RetryAfterError` for `flow.RetryAtError`, else `Error`. Wrap it with `flow.NoRetryError(err)` to fail at once, or
-  `flow.RetryAtError(err, at)` to pick the retry time. When a step is out of
-  retries, `step.Run` returns a `*step.StepError`, so you can run compensation
-  steps. `step.IdempotencyKey(ctx)` inside a callback gives a key that is the
-  same on every attempt.
-- **Durations** in config and steps are sent as `"<n>s"` when they are whole
-  seconds, else `"<n>ms"`.
-- **On failure.** Make a second function with the trigger
-  `flow.EventTrigger("inngest/function.failed", flow.StrPtr("event.data.function_id == '<appId>-<id>'"))`.
-  Its event data has `function_id`, `run_id`, `error` and `event` (the
-  original trigger event).
-- **Big state.** When a run's state (events and step results) is over 4 MiB,
-  the engine does not send it in the call. The SDK loads it from the engine
-  first, signed with your signing key, from `FLOW_BASE_URL` (or the default
-  engine URL). If loading fails, the call answers 500
-  `StateLoadFailed` and the engine tries again.
-- **Invoke** takes the full function ID, `"<appId>-<functionId>"`. The other
-  function can be in any app and any language.
+Steps called outside a function, or inside another step's callback, give
+`step.ErrNotInFunction`.
 
-Both SDKs speak the same wire protocol and pass the same conformance suite, so
-an engine cannot tell a Go app from a TypeScript one. The tests check the
-shared conformance vectors.
+**How Go stops at a new step.** Go has no `await`, so when the function reaches a new
+step, the SDK stops it with a special panic that `Serve()` catches. If you
+`recover()` around step calls, call `step.Repanic(r)` first so it goes on.
+
+**Parallel steps.** `group.Parallel(ctx, fns...)` runs each function up to its first
+new step; the engine then runs those steps at the same time. It gives back
+`group.Results` (`Value`, `Error` per function, and `AnyError()`). Do not call steps
+from goroutines you start yourself.
+
+## Errors
+
+| Function | Use |
+| --- | --- |
+| `flow.NoRetryError(err)` | Fail now, with no more tries (`NonRetriableError`). |
+| `flow.RetryAtError(err, at)` | Try again at `at` (`RetryAfterError`). |
+| `*step.StepError` | What a step gives back when it failed for good. Has `Name`, `Message`, `Stack`. |
+
+A panic in a `step.Run` callback is a failed try, named `Panic`. Go has no
+`onFailure` option: make a second function on `inngest/function.failed`, as in
+[Errors and retries](errors.md#when-a-run-fails-for-good).
+
+## Sending and realtime
+
+| Method | What it does |
+| --- | --- |
+| `client.Send(ctx, flow.Event{...})` | Sends one event; gives back its ID. |
+| `client.SendMany(ctx, []flow.Event{...})` | Sends up to 100; gives back their IDs. |
+| `client.Realtime().Publish(ctx, channel, topic, data)` | Sends a live message. |
+| `client.Realtime().Token(ctx, channel, topics...)` | A token for one browser. |
+| `client.Sync(ctx, serveURL)` | Sends the manifest with this URL. Gives back the engine's status and body. |
+| `client.Manifest(serveURL)`, `client.ManifestHash()` | The manifest and its hash. |
+
+`flow.Event` has `Name`, `Data`, `ID` (`*string`), `Timestamp` (ms) and `User`.
+
+Both SDKs speak the same protocol, so a Go function can `step.Invoke` a TypeScript
+function, and the other way round.

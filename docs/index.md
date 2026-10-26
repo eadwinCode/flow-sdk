@@ -2,49 +2,53 @@
 layout: home
 
 hero:
-  name: flow-sdk
-  text: Durable functions made of steps
+  name: Clevix Flow
+  text: Background work that does not get lost
   tagline: >-
-    The TypeScript and Go SDKs for the Clevix Flow engine. Your app defines
-    functions. Events start them. The engine runs them one step at a time,
-    saves each step's result, and tries a failed step again.
+    Clevix Flow runs functions for your app. A function is made of steps. The engine
+    saves the result of each step, tries a failed step again, and can pause a
+    function for seconds or for months.
   actions:
     - theme: brand
-      text: Get started
-      link: /getting-started
+      text: Start here
+      link: /what-is-clevix-flow
     - theme: alt
-      text: Functions and steps
-      link: /functions
+      text: Quick start
+      link: /getting-started
     - theme: alt
       text: GitHub
       link: https://github.com/eadwinCode/flow-sdk
 
 features:
-  - title: Steps run once
+  - title: Background jobs
     details: >-
-      The engine saves the result of each step. If a step fails, only that step
-      is tried again. Code with a side effect, like an email or a payment, goes
-      in a step.
-  - title: Runs can wait for days
+      Move slow work out of a web request. Your route answers at once. The work runs
+      later, with retries, at a pace an outside API can take.
+    link: /background-jobs
+    linkText: Read the guide
+  - title: Webhooks and events
     details: >-
-      Sleep for a time, sleep until a date, or wait for another event, with a
-      timeout in case it never comes.
-  - title: Events and schedules
+      Take webhooks from GitHub, Stripe or any other service, check them, and handle
+      each one once, even when the sender sends it twice.
+    link: /webhooks
+    linkText: Read the guide
+  - title: Crons and scheduled jobs
     details: >-
-      Events start runs, sent from your app, from a function, or over HTTP. Cron
-      triggers run on a timetable, in the time zone you pick.
-  - title: Flow control
-    details: >-
-      Concurrency, throttle, rate limit, debounce, batching, priority,
-      idempotency and singleton. Set them on the function; the engine does the
-      rest.
-  - title: Live progress in the browser
-    details: >-
-      Publish small messages from a function and show them on the page over a
-      WebSocket, with a React hook if you want one.
-  - title: TypeScript and Go, one protocol
-    details: >-
-      Both SDKs speak the same protocol, so a TypeScript function can invoke a Go
-      function. Adapters for Cloudflare Workers, Hono, Next.js and Express. The Go
-      SDK uses the standard library only.
+      Run code on a timetable, in the time zone you pick. Run it once at a set time,
+      or wait days between two steps.
+    link: /crons
+    linkText: Read the guide
 ---
+
+## Who it is for
+
+Clevix Flow is for developers who build a web app or an API in **TypeScript** or
+**Go**, and have work that must not get lost: the emails after a sign-up, a payment
+webhook, a report every night.
+
+You add the SDK to your app and write functions in your own code. The hosted engine
+runs them, and you see every run in the
+[dashboard](https://dashboard.flow.clevixstudio.com).
+
+New here? Read [What is Clevix Flow](what-is-clevix-flow.md) and
+[Core ideas](core-ideas.md), then do the [Quick start](getting-started.md).

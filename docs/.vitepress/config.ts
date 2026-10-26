@@ -1,12 +1,12 @@
 import { defineConfig } from 'vitepress';
 
 const repo = 'https://github.com/eadwinCode/flow-sdk';
-const description = 'Durable functions made of steps, in TypeScript and Go.';
+const description = 'Background jobs, webhooks and crons that do not get lost, in TypeScript and Go.';
 
 // Make heading anchors the way GitHub does: lower case, drop punctuation, spaces
 // to dashes. The guides are also read on GitHub, and their links (like
-// getting-started.md#1-get-your-apps-keys) use GitHub's anchors. VitePress's own
-// anchors differ (it would make "_1-get-your-app-s-keys"), so those links would
+// getting-started.md#1-sign-up-and-get-a-workspace) use GitHub's anchors. VitePress's own
+// anchors differ (it would make "_1-sign-up-and-get-a-workspace"), so those links would
 // miss on the site.
 function githubSlug(text: string): string {
   return text
@@ -17,7 +17,7 @@ function githubSlug(text: string): string {
 }
 
 export default defineConfig({
-  title: 'flow-sdk',
+  title: 'Clevix Flow',
   description,
   // Project page, so the site is served from /flow-sdk/ rather than the root.
   base: '/flow-sdk/',
@@ -33,7 +33,7 @@ export default defineConfig({
 
   head: [
     ['meta', { name: 'theme-color', content: '#3c8772' }],
-    ['meta', { property: 'og:title', content: 'flow-sdk' }],
+    ['meta', { property: 'og:title', content: 'Clevix Flow docs' }],
     ['meta', { property: 'og:description', content: description }],
   ],
 
@@ -41,13 +41,17 @@ export default defineConfig({
     search: { provider: 'local' },
 
     nav: [
-      { text: 'Getting started', link: '/getting-started' },
+      { text: 'Start here', link: '/what-is-clevix-flow' },
+      { text: 'Use cases', link: '/background-jobs' },
       { text: 'Guides', link: '/functions' },
       {
         text: 'Reference',
         items: [
-          { text: 'TypeScript', link: '/typescript' },
-          { text: 'Go', link: '/go' },
+          { text: 'TypeScript API', link: '/typescript' },
+          { text: 'Go API', link: '/go' },
+          { text: 'Settings', link: '/settings' },
+          { text: 'HTTP API', link: '/http-api' },
+          { text: 'Limits', link: '/limits' },
           { text: 'Protocol', link: '/protocol' },
         ],
       },
@@ -58,9 +62,18 @@ export default defineConfig({
       {
         text: 'Start here',
         items: [
-          { text: 'Overview', link: '/' },
-          { text: 'Getting started', link: '/getting-started' },
+          { text: 'What is Clevix Flow', link: '/what-is-clevix-flow' },
+          { text: 'Core ideas', link: '/core-ideas' },
+          { text: 'Quick start', link: '/getting-started' },
           { text: 'Local development', link: '/local-dev' },
+        ],
+      },
+      {
+        text: 'Use cases',
+        items: [
+          { text: 'Background jobs', link: '/background-jobs' },
+          { text: 'Webhooks and events', link: '/webhooks' },
+          { text: 'Crons and scheduled jobs', link: '/crons' },
         ],
       },
       {
@@ -68,18 +81,21 @@ export default defineConfig({
         items: [
           { text: 'Functions and steps', link: '/functions' },
           { text: 'Events', link: '/events' },
-          { text: 'Scheduling', link: '/scheduling' },
+          { text: 'Errors and retries', link: '/errors' },
           { text: 'Flow control', link: '/flow-control' },
           { text: 'Realtime', link: '/realtime' },
-          { text: 'Production', link: '/production' },
+          { text: 'Going to production', link: '/production' },
         ],
       },
       {
         text: 'Reference',
         items: [
-          { text: 'TypeScript SDK', link: '/typescript' },
-          { text: 'Go SDK', link: '/go' },
-          { text: 'SDK protocol', link: '/protocol' },
+          { text: 'TypeScript API', link: '/typescript' },
+          { text: 'Go API', link: '/go' },
+          { text: 'Settings', link: '/settings' },
+          { text: 'HTTP API', link: '/http-api' },
+          { text: 'Limits', link: '/limits' },
+          { text: 'Protocol (for SDK authors)', link: '/protocol' },
         ],
       },
     ],

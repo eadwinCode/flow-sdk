@@ -24,7 +24,7 @@ import { execute } from "./execute.ts";
 import type { FlowFunction } from "./types.ts";
 import { SDK_VERSION } from "./version.ts";
 
-// The app's one endpoint (see docs/sdk-protocol.md, "The one endpoint"):
+// The app's one endpoint (see docs/protocol.md, "The one endpoint"):
 //   POST  run a function (signed by the engine)
 //   PUT   sync: send the manifest to the engine
 //   GET   the manifest (signed over the empty body)

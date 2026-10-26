@@ -3,7 +3,8 @@
   "private": true,
   "type": "module",
   "workspaces": [
-    "packages/*"
+    "packages/*",
+    "examples/ts"
   ],
   "packageManager": "bun@1.4.2",
   "engines": {
@@ -11,10 +12,13 @@
   },
   "scripts": {
     "typecheck": "bun run --workspaces typecheck",
-    "test": "bun run --workspaces test",
-    "build": "bun run --workspaces build",
+    "test": "for p in packages/*; do bun run --cwd \"$p\" test || exit 1; done",
+    "build": "for p in packages/*; do bun run --cwd \"$p\" build || exit 1; done",
+    "examples:ts": "bun run --filter @clevix/flow-examples typecheck",
+    "examples:go": "cd examples/go && test -z \"$(gofmt -l .)\" && go vet ./... && go build -o /dev/null ./...",
+    "examples:check": "bun run examples:ts && bun run examples:go",
     "docs:dev": "vitepress dev docs",
-    "docs:build": "vitepress build docs",
+    "docs:build": "node scripts/check-docs.mjs && vitepress build docs",
     "docs:preview": "vitepress preview docs"
   },
   "devDependencies": {

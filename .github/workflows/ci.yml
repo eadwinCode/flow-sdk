@@ -20,6 +20,14 @@ jobs:
       - run: test -z "$(gofmt -l .)"
       - run: go vet ./...
       - run: go test -race ./...
+      # The Go code the docs show. examples/go is a module of its own (the root
+      # module's ./... does not reach it), built against this repo's SDK.
+      - name: Build and vet the docs examples
+        working-directory: examples/go
+        run: |
+          test -z "$(gofmt -l .)"
+          go vet ./...
+          go build -o /dev/null ./...
 
   ts:
     runs-on: ubuntu-latest
@@ -34,9 +42,12 @@ jobs:
         with:
           node-version: 24
       - run: bun install --frozen-lockfile
+      # Also type-checks the TypeScript code the docs show (examples/ts is a
+      # workspace), so the docs can not drift from the SDK.
       - run: bun run typecheck
       - run: bun run test
       - run: bun run build
-      # The docs site fails on a dead link. Build it here so a bad link fails the
-      # pull request, not the Pages deploy after the merge.
+      # The docs site fails on a dead link, and scripts/check-docs.mjs on a missing
+      # code snippet or heading. Build it here so they fail the pull request, not
+      # the Pages deploy after the merge.
       - run: bun run docs:build

@@ -9,29 +9,38 @@ in the other language.
 
 | Language | Install | Guide |
 | --- | --- | --- |
-| Go | `go get github.com/eadwinCode/flow-sdk@latest` | [docs/go.md](docs/go.md) |
-| TypeScript | `npm install <.tgz URL from the release>` | [docs/typescript.md](docs/typescript.md) |
+| Go | `go get github.com/eadwinCode/flow-sdk@v0.6.5` | [Go API](docs/go.md) |
+| TypeScript | `npm install https://github.com/eadwinCode/flow-sdk/releases/download/v0.6.5/clevix-flow-0.6.5.tgz` | [TypeScript API](docs/typescript.md) |
 
-The API follows Inngest (`inngestgo` for Go, `inngest` for TypeScript).
+The TypeScript package is not on the npm registry: install it by the `.tgz` URL of
+a [release](https://github.com/eadwinCode/flow-sdk/releases).
 
-## Guides
+## Docs
 
-New here? Start with **[Getting started](docs/getting-started.md)**: keys, install,
-add your app, your first function, deploy, connect, and your first event.
+The docs are a website: **[eadwincode.github.io/flow-sdk](https://eadwincode.github.io/flow-sdk/)**.
+New here? Start with [What is Clevix Flow](docs/what-is-clevix-flow.md), then the
+[Quick start](docs/getting-started.md).
 
-| Guide | What is in it |
+| Page | What is in it |
 | --- | --- |
-| [Getting started](docs/getting-started.md) | From nothing to a running function, and working on your laptop |
-| [Functions and steps](docs/functions.md) | Triggers, steps (run, sleep, waitForEvent, sendEvent, invoke), parallel steps, errors and retries, cancelling, failure handlers, expressions |
-| [Events](docs/events.md) | What an event holds, sending from apps, functions and HTTP, sending once, delayed runs |
-| [Scheduling](docs/scheduling.md) | Cron triggers and time zones, sleeps, runs at a set time |
+| [What is Clevix Flow](docs/what-is-clevix-flow.md) | Your app, the engine, the dashboard, and how a run happens |
+| [Core ideas](docs/core-ideas.md) | Events, functions, steps, runs, retries, replay, sleeps, waits, sync, keys |
+| [Quick start](docs/getting-started.md) | From nothing to a finished run |
+| [Local development](docs/local-dev.md) | A local engine, or the hosted engine through a tunnel |
+| [Background jobs](docs/background-jobs.md) | Slow work out of a request, with retries and a safe pace |
+| [Webhooks and events](docs/webhooks.md) | Webhooks from other services, checked and handled once |
+| [Crons and scheduled jobs](docs/crons.md) | Timetables, set times, sleeps, retrying later |
+| [Functions and steps](docs/functions.md) | Every kind of step, triggers, expressions, options |
+| [Events](docs/events.md) | Sending events, once only, for later |
+| [Errors and retries](docs/errors.md) | Retries, giving up, undoing, failure handlers, timeouts |
 | [Flow control](docs/flow-control.md) | Concurrency, throttle, rate limit, debounce, batching, priority, idempotency, singleton |
-| [Realtime](docs/realtime.md) | Live messages from functions to the browser: publish, tokens, subscribe, the React hook |
-| [Local development](docs/local-dev.md) | A local engine on your machine (Docker or `bun run dev`), pointing your app at it, or the hosted engine through a tunnel |
-| [Production](docs/production.md) | Syncing in CI, key rotation, the dashboard, limits, troubleshooting |
-| [TypeScript reference](docs/typescript.md) | Install, framework adapters (Workers, Hono, Next.js, Express), settings |
-| [Go reference](docs/go.md) | Install, the API, Go-specific notes |
+| [Realtime](docs/realtime.md) | Live messages from functions to the browser |
+| [Going to production](docs/production.md) | Sync, keys, the dashboard, troubleshooting |
+| [Settings](docs/settings.md), [HTTP API](docs/http-api.md), [Limits](docs/limits.md) | Reference |
 | [Protocol](docs/protocol.md) | How SDKs talk to the engine (for SDK authors) |
+
+Every code example in the docs is a file in [`examples/`](examples). CI type-checks
+and builds them against the SDK in this repo.
 
 ## How it fits together
 
@@ -42,88 +51,6 @@ add your app, your first function, deploy, connect, and your first event.
    your functions. A backup for CI: `curl -X PUT https://your-app/api/flow`.
 4. Send events to the engine. Functions whose trigger matches start a run.
 
-## Quick start: Go
-
-```bash
-go get github.com/eadwinCode/flow-sdk@latest
-```
-
-```go
-package main
-
-import (
-	"context"
-	"net/http"
-	"time"
-
-	flow "github.com/eadwinCode/flow-sdk"
-	"github.com/eadwinCode/flow-sdk/step"
-)
-
-type SignedUp struct {
-	UserID string `json:"userId"`
-}
-
-func main() {
-	client, err := flow.NewClient(flow.ClientOpts{AppID: "billing-service"})
-	if err != nil {
-		panic(err)
-	}
-
-	_, err = flow.CreateFunction(client,
-		flow.FunctionOpts{ID: "welcome"},
-		flow.EventTrigger("user/signed-up", nil),
-		func(ctx context.Context, in flow.Input[SignedUp]) (any, error) {
-			_, err := step.Run(ctx, "send-email", func(ctx context.Context) (string, error) {
-				return "sent", nil // call your mailer here
-			})
-			if err != nil {
-				return nil, err
-			}
-			step.Sleep(ctx, "wait-a-day", 24*time.Hour)
-			return "done", nil
-		},
-	)
-	if err != nil {
-		panic(err)
-	}
-
-	http.Handle("/api/flow", client.Serve())
-	_ = http.ListenAndServe(":8080", nil)
-}
-```
-
-## Quick start: TypeScript
-
-Take the `.tgz` link from the newest
-[release](https://github.com/eadwinCode/flow-sdk/releases):
-
-```bash
-npm install https://github.com/eadwinCode/flow-sdk/releases/download/v0.6.5/clevix-flow-0.6.5.tgz
-```
-
-```ts
-import { Flow } from "@clevix/flow";
-import { serve } from "@clevix/flow/cloudflare";
-
-const flow = new Flow({ id: "shop" });
-
-const welcome = flow.createFunction(
-  { id: "welcome" },
-  { event: "user/signed-up" },
-  async ({ event, step }) => {
-    await step.run("send-email", () => sendEmail(event.data.userId));
-    await step.sleep("wait-a-day", "1d");
-    return "done";
-  },
-);
-
-export default serve({ client: flow, functions: [welcome] });
-```
-
-There are also adapters for Hono, Next.js and Express. See
-[docs/typescript.md](docs/typescript.md).
-
 ## Settings
 
 Both SDKs read the same env vars. Values passed in code win.
@@ -133,7 +60,7 @@ Both SDKs read the same env vars. Values passed in code win.
 | `FLOW_SIGNING_KEY` | Your app's own signing key, from **Add app** in the dashboard. Checks calls from the engine and signs sync. Required unless dev mode. |
 | `FLOW_SIGNING_KEY_FALLBACK` | The app's old key while you rotate it. |
 | `FLOW_EVENT_KEY` | For sending events from your app. |
-| `FLOW_BASE_URL` | The engine's URL. Default: `https://worker.flow.clevixstudio.com`. Set it only if you run your own engine. |
+| `FLOW_BASE_URL` | The engine's URL. Default: `https://worker.flow.clevixstudio.com` (`https://worker.clevixstudio.com` in v0.6.5). Set it only if you run your own engine. |
 | `FLOW_DEV` | `1` turns off signature checks. For local work only. |
 
 ## Versions
@@ -150,7 +77,8 @@ use Watch → Custom → Releases on this repo.
 | `packages/flow` | The TypeScript SDK, `@clevix/flow` |
 | `packages/protocol` | `@clevix/protocol`: wire types, signing, IDs and durations. Shared with the engine; `@clevix/flow` bundles it |
 | `testdata/vectors.json` | Test vectors both SDKs must match |
-| `docs/` | The [Go](docs/go.md), [TypeScript](docs/typescript.md) and [protocol](docs/protocol.md) guides |
+| `docs/` | The docs website (VitePress) |
+| `examples/` | The code the docs show: `examples/ts` (a workspace) and `examples/go` (a module of its own) |
 
 ## Develop
 
@@ -166,8 +94,11 @@ go test ./...
 Use `bun run test`, not `bun test`: `bun test` is Bun's own test runner, and the
 tests here run on vitest.
 
-The docs in `docs/` are also a website, built with VitePress. `bun run docs:dev`
-serves it on your machine, and `bun run docs:build` checks that every link works.
+The docs in `docs/` are a website, built with VitePress. `bun run docs:dev` serves
+it on your machine. `bun run docs:build` checks that every link, heading link and
+code snippet works. `bun run examples:check` type-checks the TypeScript examples
+and vets and builds the Go ones (`bun run typecheck` covers the TypeScript ones
+too).
 
 The engine pins a release of this repo. When a change needs the engine too (for
 example a protocol change), see "Working with the engine" in

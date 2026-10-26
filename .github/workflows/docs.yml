@@ -7,6 +7,8 @@ on:
     # Only build again when something the site shows changes.
     paths:
       - "docs/**"
+      - "examples/**"
+      - "scripts/check-docs.mjs"
       - ".github/workflows/docs.yml"
       - "package.json"
       - "bun.lock"

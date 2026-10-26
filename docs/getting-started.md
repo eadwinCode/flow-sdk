@@ -1,312 +1,191 @@
-# Getting started
+# Quick start
 
-This guide takes you from nothing to a function that runs on the engine. It shows
-TypeScript and Go side by side; use the one your app is written in.
+This page takes you from nothing to a finished run on the hosted engine. You will
+make a workspace, write one function, connect your app, send an event, and watch the
+run. Pick TypeScript or Go in each code box.
 
-## How it works
+You need:
 
-```
- your app                                 the engine
- ────────                                 ──────────
- /api/flow ◀─── GET  (Add app, Resync) ─── reads your functions
-           ──── PUT  (sync, on deploy) ──▶ (or your app sends them)
-                                           │
- sender ─────── POST /e (an event) ──────▶ starts a run for each matching function
-                                           │
- /api/flow ◀─── POST (signed call) ─────── runs your code one step at a time,
-           ──── step result ─────────────▶ saves each result, retries failures
-```
+- **TypeScript:** Node 24 (it runs `.ts` files as they are), and npm.
+- **Go:** Go 1.27 or later.
+- A way for the engine to reach your app over `https`: a deploy, or a tunnel to your
+  laptop (step 5 shows one). To run everything on your own machine instead, see
+  [Local development](local-dev.md).
 
-- Your app **serves one endpoint**, for example `/api/flow`. The engine calls it to
-  run your code. Every call is signed with **your app's own signing key**, and the
-  SDK checks the signature.
-- You **add the app** in the dashboard by that endpoint's URL. The engine asks the
-  app for its functions. After a deploy, the app can also **sync** itself: it sends
-  the list of its functions to the engine.
-- **Events** start runs. An event has a name, like `user/signed-up`, and some data.
-  Every function whose trigger matches the name gets a run.
-- A function is made of **steps**. The engine saves each step's result. If a step
-  fails, only that step is tried again. A run can sleep or wait for days.
+## 1. Sign up and get a workspace
 
-## 1. Get your app's keys
+Open the dashboard: [dashboard.flow.clevixstudio.com](https://dashboard.flow.clevixstudio.com).
 
-First get an account and a workspace on the dashboard,
-[dashboard.flow.clevixstudio.com](https://dashboard.flow.clevixstudio.com):
+1. Click **Sign up**. Fill in your name, email, a password of at least 12
+   characters, and a **Team name**. The team name makes your account and its first
+   workspace.
+2. Open the link in the email you get, and click **This is my email**.
+3. You land on the account's **Billing** page. Pick a plan (**Choose ...**). A
+   workspace can not add apps until its account has a plan.
 
-1. **Sign up**, then click the link in the email you get to check your address.
-2. **Make a workspace, or join one.** A workspace is your team's space: its apps,
-   runs and keys. If someone invited you, sign up from the link in your invite and
-   you join their workspace.
-3. **Pick a plan** for a new workspace. You can add apps only once it has one. If you
-   joined a team's workspace, it already has a plan.
+Were you invited? Sign up from the link in the invite. You join that team's account,
+with the role and the workspaces the invite gives you, and skip the plan step.
 
-Apps and keys belong to one workspace. An event key only starts runs of the apps in
-its own workspace. To add an app and make keys, your role in the workspace must be
-Owner, Admin or Developer.
-
-The SDK talks to `https://worker.flow.clevixstudio.com` unless you set
-`FLOW_BASE_URL` (you run your own engine).
-
-In your workspace, open **Apps** and click **Add app**:
-
-1. Type your **app ID**: the ID you give the app in its code (`new Flow({ id: "shop" })`
-   or `flow.ClientOpts{AppID: "shop"}`), for example `shop`.
-2. Tick **Also create an event key** if this app sends events.
-3. Click **Create key**. You get the app's **signing key** (`signkey-` and 64 hex
-   characters), and the event key if you asked. The app uses the signing key to
-   check that calls come from the engine, and to prove who it is when it syncs.
-   Each app has its own.
-
-Each key is shown **once**. Copy it into your secret store right away (as
-`FLOW_SIGNING_KEY` and `FLOW_EVENT_KEY`, see step 4). Keys are secrets: never put
-them in code or in git. Then click **I put it in the app**: the dialog asks for your
-endpoint's URL. You can leave it open, or close it and come back after step 5
-(**Add app**, type the same app ID, **It has a key: connect**).
-
-Other senders (a backend, a script) get their own event key on the workspace's
-**Keys** page, one per sender, so you can revoke one without cutting off the rest.
+To add apps and make keys, your role must be **Owner**, **Admin** or **Developer**.
 
 ## 2. Install the SDK
 
-TypeScript (take the newest version from the
-[releases](https://github.com/eadwinCode/flow-sdk/releases)):
+The TypeScript package is not on the npm registry. Each release puts it on the
+[GitHub releases page](https://github.com/eadwinCode/flow-sdk/releases) as a
+`.tgz` file, and you install it by its URL. No login is needed. This example also
+uses Express.
 
-```bash
-npm install https://github.com/eadwinCode/flow-sdk/releases/download/v0.6.5/clevix-flow-0.6.5.tgz
+::: code-group
+
+```bash [TypeScript]
+mkdir hello-flow && cd hello-flow
+npm init -y && npm pkg set type=module
+npm install https://github.com/eadwinCode/flow-sdk/releases/download/v0.6.5/clevix-flow-0.6.5.tgz express
 ```
 
-Go (needs Go 1.27+):
-
-```bash
+```bash [Go]
+mkdir hello-flow && cd hello-flow
+go mod init hello-flow
 go get github.com/eadwinCode/flow-sdk@v0.6.5
 ```
 
+:::
+
+v0.6.5 is the newest release. It talks to the engine at
+`https://worker.clevixstudio.com` by default. The next release changes the default
+to `https://worker.flow.clevixstudio.com`. Both addresses reach the same engine
+today, so you do not need to set anything.
+
 ## 3. Write a function
 
-This function sends a welcome email when a user signs up, waits a day, then sends
-a tip.
+Make `index.ts` (TypeScript) or `main.go` (Go). First the client, named after your
+app:
 
-TypeScript, on Cloudflare Workers (`src/index.ts`):
+::: code-group
+<<< @/../examples/ts/quickstart.ts#client [TypeScript]
+<<< @/../examples/go/quickstart/main.go#client [Go]
+:::
 
-```ts
-import { Flow } from "@clevix/flow";
-import { serve } from "@clevix/flow/cloudflare";
+Then a function. It runs when a `demo/hello` event comes in. It has three steps: it
+makes a greeting, sleeps 10 seconds, and prints the greeting.
 
-// The app ID names this app on the engine. Keep it the same forever.
-const flow = new Flow({ id: "shop" });
+::: code-group
+<<< @/../examples/ts/quickstart.ts#function [TypeScript]
+<<< @/../examples/go/quickstart/main.go#function [Go]
+:::
 
-const welcome = flow.createFunction(
-  { id: "welcome-email" },
-  { event: "user/signed-up" },
-  async ({ event, step }) => {
-    const user = await step.run("load-user", () => loadUser(event.data.userId));
-    await step.run("send-welcome", () => sendEmail(user.email, "Welcome!"));
-    await step.sleep("wait-a-day", "1d");
-    await step.run("send-tip", () => sendEmail(user.email, "Here is a tip..."));
-    return { sent: 2 };
-  },
-);
+Last, serve the endpoint. The engine calls this one URL for every function in the
+app.
 
-// One endpoint for all functions. On Workers this is the whole fetch handler;
-// to serve it on one path only, use the Hono adapter (see typescript.md).
-export default serve({ client: flow, functions: [welcome] });
+::: code-group
+<<< @/../examples/ts/quickstart.ts#serve [TypeScript]
+<<< @/../examples/go/quickstart/main.go#serve [Go]
+:::
 
-async function loadUser(id: string): Promise<{ email: string }> {
-  return { email: `${id}@example.com` }; // read your database here
-}
-async function sendEmail(to: string, text: string): Promise<void> {
-  // call your email provider here
-}
+The whole file is in the repo:
+[`examples/ts/quickstart.ts`](https://github.com/eadwinCode/flow-sdk/blob/main/examples/ts/quickstart.ts)
+and [`examples/go/quickstart/main.go`](https://github.com/eadwinCode/flow-sdk/blob/main/examples/go/quickstart/main.go).
+(In Go, call `addHelloWorld(client)` before `Serve`, as the file does.)
+
+## 4. Make the keys
+
+In your workspace, open **Apps** and click **Add app**. The form has four fields:
+
+1. **Endpoint URL**: where the engine reaches your endpoint, with its path, for
+   example `https://hello.example.com/api/flow`. If you do not know it yet, fill it
+   in at step 5.
+2. **App ID (optional)**: leave it empty. The engine reads the ID from your app.
+3. **Signing key**: click **Generate**. This is your app's own signing key.
+4. **Event key (optional)**: click **Generate**. Your app does not send events in
+   this example, but you will use this key with curl in step 6.
+
+Copy both keys now: the form says "Copy these now; they can not be shown again."
+Keep them in your secret store, never in code or in git. Leave the form open.
+
+## 5. Run the app, then connect
+
+Start the app with the signing key in its environment:
+
+::: code-group
+
+```bash [TypeScript]
+FLOW_SIGNING_KEY=signkey-... node index.ts
 ```
 
-Go (`main.go`):
-
-```go
-package main
-
-import (
-	"context"
-	"log"
-	"net/http"
-	"time"
-
-	flow "github.com/eadwinCode/flow-sdk"
-	"github.com/eadwinCode/flow-sdk/step"
-)
-
-type SignedUp struct {
-	UserID string `json:"userId"`
-}
-
-func main() {
-	// The app ID names this app on the engine. Keep it the same forever.
-	client, err := flow.NewClient(flow.ClientOpts{AppID: "shop"})
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	_, err = flow.CreateFunction(client,
-		flow.FunctionOpts{ID: "welcome-email"},
-		flow.EventTrigger("user/signed-up", nil),
-		func(ctx context.Context, in flow.Input[SignedUp]) (any, error) {
-			email, err := step.Run(ctx, "load-user", func(ctx context.Context) (string, error) {
-				return loadEmail(ctx, in.Event.Data.UserID)
-			})
-			if err != nil {
-				return nil, err
-			}
-			if _, err := step.Run(ctx, "send-welcome", func(ctx context.Context) (bool, error) {
-				return true, sendEmail(ctx, email, "Welcome!")
-			}); err != nil {
-				return nil, err
-			}
-			if err := step.Sleep(ctx, "wait-a-day", 24*time.Hour); err != nil {
-				return nil, err
-			}
-			if _, err := step.Run(ctx, "send-tip", func(ctx context.Context) (bool, error) {
-				return true, sendEmail(ctx, email, "Here is a tip...")
-			}); err != nil {
-				return nil, err
-			}
-			return map[string]int{"sent": 2}, nil
-		},
-	)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	// One endpoint for all functions.
-	http.Handle("/api/flow", client.Serve())
-	log.Fatal(http.ListenAndServe(":8080", nil))
-}
-
-func loadEmail(ctx context.Context, userID string) (string, error) {
-	return userID + "@example.com", nil // read your database here
-}
-
-func sendEmail(ctx context.Context, to, text string) error {
-	return nil // call your email provider here
-}
+```bash [Go]
+FLOW_SIGNING_KEY=signkey-... go run .
 ```
 
-Things to notice:
+:::
 
-- **Step IDs** (`"load-user"`, `"send-welcome"`, ...) name the steps. Keep them the
-  same between deploys: the engine finds saved results by ID.
-- **Code outside steps runs again** each time the engine calls your function. Put
-  anything with a side effect (email, payment, database write) inside a step.
-- A step's result is saved as JSON, so return plain data from it.
+Until you connect it, the app logs a line like this when it starts. It is fine, and
+it stops once the app is connected:
 
-[functions.md](functions.md) covers all the step types and options.
+```
+flow: sync check of app quickstart: the sync failed (400): invalid url. The engine may not know this app's URL yet: add the app by URL in the dashboard, or sync once with curl -X PUT <app-url>
+```
 
-## 4. Settings
-
-The SDK reads its settings from env vars. You can also pass them in code
-(`new Flow({ ... })` or `flow.ClientOpts{...}`); a value in code wins.
-
-| Env var | Needed for | What it is |
-| --- | --- | --- |
-| `FLOW_SIGNING_KEY` | always | Your app's signing key from step 1. Secret. |
-| `FLOW_EVENT_KEY` | sending events from this app | The event key from step 1. Secret. |
-| `FLOW_SIGNING_KEY_FALLBACK` | key rotation | The app's old signing key while you switch. Secret. |
-| `FLOW_BASE_URL` | only if you run your own engine | The engine's URL. Default: `https://worker.flow.clevixstudio.com`. |
-
-On Cloudflare Workers, put secrets in with wrangler:
+The hosted engine calls your app over `https`, so it can not reach `localhost`.
+Deploy the app, or open a tunnel to your laptop. For example, with Cloudflare's
+`cloudflared`:
 
 ```bash
-wrangler secret put FLOW_SIGNING_KEY
-wrangler secret put FLOW_EVENT_KEY
+cloudflared tunnel --url http://localhost:3000
 ```
 
-Running your own engine? Add its URL to `vars` in `wrangler.jsonc`:
-`"vars": { "FLOW_BASE_URL": "https://flow.example.com" }`.
+It prints a public URL like `https://random-words.trycloudflare.com`. Your Endpoint
+URL is that, plus `/api/flow`.
 
-On a server, set them as env vars the usual way (your host's secret settings,
-a `.env` loader, Kubernetes secrets, ...).
+Back in the **Add app** form, check the Endpoint URL and click **Connect**. The
+engine calls your endpoint with a signed `GET`, reads the app ID (`quickstart`) and
+its functions, and ties the signing key to this app. You see "quickstart is
+connected: 1 function synced." The app shows on the Apps page as **Live**.
 
-## 5. Deploy and connect
-
-Deploy your app as you always do, with its `FLOW_SIGNING_KEY`. The endpoint must be
-public and use `https`.
-
-Then, in the **Add app** dialog, type the endpoint's URL with its path (for example
-`https://shop.example.com/api/flow`) and click **Connect**. The engine calls it with
-a `GET`, signed with your app's key, and reads your functions. Your app shows on the
-**Apps** page as **Live**, with its functions.
-
-If it fails (the app is not deployed yet, or it has another key), the app is still
-added, as **Down**, with the error. Fix it and click **Retry**, or **Resync** on the
-Apps page later.
-
-After **every deploy** the engine must learn your new functions. The app does this
-by itself when it starts: the SDK asks the engine for the hash of its last sync, and
-sends your function list (signed with your app's key) when it changed. On Workers
-this happens on the first request after the deploy. You can also click **Resync** on
-the Apps page, or send a `PUT` to your own endpoint (handy in CI):
-
-```bash
-curl -X PUT https://shop.example.com/api/flow
-```
-
-A good answer is `200` with JSON that lists what changed, like
-`{"ok":true,"modified":["shop-welcome-email"],...}`. The easiest way is a last step
-in your deploy script or CI job. [production.md](production.md) has an example.
+When it does not work, the form says why and the button turns into **Retry**. The
+usual causes: the app is not running, the URL is wrong, or the app has another
+signing key.
 
 ## 6. Send an event
 
-Send `user/signed-up` with your event key. With curl:
+Send `demo/hello` with your event key. Any HTTP client works:
 
 ```bash
 curl -X POST https://worker.flow.clevixstudio.com/e \
   -H "Authorization: Bearer $FLOW_EVENT_KEY" \
   -H "Content-Type: application/json" \
-  -d '{"name": "user/signed-up", "data": {"userId": "u_123"}}'
+  -d '{"name": "demo/hello", "data": {"name": "Ada"}}'
 ```
 
-Or from your app, TypeScript:
+The engine answers with the new event's ID:
 
-```ts
-// On Workers, pass the handler's env so the SDK finds FLOW_EVENT_KEY there:
-// await flow.send({ ... }, { env });
-await flow.send({ name: "user/signed-up", data: { userId: "u_123" } });
+```json
+{"ids":["evt_01M5WS6FXPGCD6EXT4ETV9W2C6"],"status":200}
 ```
 
-Go:
+You can also send it from the dashboard: **Events**, then **Send test event**.
 
-```go
-id, err := client.Send(ctx, flow.Event{
-	Name: "user/signed-up",
-	Data: map[string]any{"userId": "u_123"},
-})
-if err != nil {
-	log.Printf("send failed: %v", err)
-} else {
-	log.Printf("sent event %s", id)
-}
-```
+## 7. Watch the run
 
-The answer holds the new event's ID. [events.md](events.md) has the details.
+Open **Runs** in the dashboard and open the newest run of `hello-world`. The run page
+updates live. You see:
 
-## 7. Watch it run
+1. `make-greeting` done, with its output `"Hello, Ada!"`.
+2. The run **Sleeping** in `wait-a-moment` for 10 seconds.
+3. `print-greeting` done, and your app's log shows `Hello, Ada!`.
+4. The run **Completed**, with the output `{"greeting": "Hello, Ada!"}`.
 
-Open **Runs** in the dashboard. You will see a run of `welcome-email`. Open it to
-see each step, its output, and the one-day sleep. The run page updates live.
+## What just happened
 
-If the run fails, the run page shows the error and each attempt.
-[production.md](production.md#troubleshooting) lists common problems.
-
-## Working on your laptop
-
-Run your app on your laptop against **a local engine** (the whole engine on your
-machine: no tunnel, no `https`, plain `http://127.0.0.1`), or against the **hosted
-engine through a tunnel**. [local-dev.md](local-dev.md) covers both.
+- The engine called your endpoint four times: once for each of the three steps,
+  and once more for the function to return. Each time, the function ran from the top
+  and the steps that were done gave back their saved results. This is [replay](core-ideas.md#replay-code-outside-steps-runs-again).
+- During the sleep, nothing ran and your app was not called.
+- When you deploy a new version, the app syncs its functions with the engine by
+  itself when it starts. See [Going to production](production.md).
 
 ## Next
 
-- [functions.md](functions.md): triggers, steps, errors and retries, cancelling
-- [events.md](events.md): sending events, and what an event holds
-- [scheduling.md](scheduling.md): cron, sleeps and delayed runs
-- [flow-control.md](flow-control.md): concurrency, throttling, rate limits, debounce, batching
-- [local-dev.md](local-dev.md): a local engine on your machine, or a tunnel
-- [production.md](production.md): syncing in CI, key rotation, limits, troubleshooting
-- [typescript.md](typescript.md) and [go.md](go.md): install, framework adapters, settings
+- [Background jobs](background-jobs.md), [Webhooks and events](webhooks.md) and
+  [Crons and scheduled jobs](crons.md): full guides for the three main uses.
+- [Functions and steps](functions.md): every kind of step.
+- [Local development](local-dev.md): work without a tunnel.
