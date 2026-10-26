@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"mime"
 	"net/http"
 	"os"
 	"sync"
@@ -25,10 +26,27 @@ import (
 )
 
 // #region route
+// The engine takes one event of up to 1,000,000 bytes (as JSON, with its id, name
+// and time). The body becomes the event's data, so take bodies up to 999,000 bytes
+// and leave room for the rest.
+const maxBodyBytes = 999_000
+
 func githubWebhook(client *flow.Client) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		// Read the exact bytes: the signature is over them.
-		body, err := io.ReadAll(io.LimitReader(r.Body, 1<<20))
+		// GitHub sends JSON only when the webhook's "Content type" is application/json.
+		if mediaType, _, _ := mime.ParseMediaType(r.Header.Get("Content-Type")); mediaType != "application/json" {
+			http.Error(w, "set the webhook's Content type to application/json", http.StatusUnsupportedMediaType)
+			return
+		}
+
+		// Read the exact bytes: the signature is over them. A bigger body is
+		// refused, not cut short.
+		body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxBodyBytes))
+		var tooBig *http.MaxBytesError
+		if errors.As(err, &tooBig) {
+			http.Error(w, fmt.Sprintf("the body is over %d bytes, too big for one event", maxBodyBytes), http.StatusRequestEntityTooLarge)
+			return
+		}
 		if err != nil {
 			http.Error(w, "could not read the body", http.StatusBadRequest)
 			return
@@ -40,16 +58,26 @@ func githubWebhook(client *flow.Client) http.HandlerFunc {
 
 		kind := r.Header.Get("X-GitHub-Event")        // "push", "pull_request", ...
 		delivery := r.Header.Get("X-GitHub-Delivery") // one ID per delivery
+		if delivery == "" {
+			// No delivery ID, no stable event ID: refuse it rather than guess one.
+			http.Error(w, "no X-GitHub-Delivery header", http.StatusBadRequest)
+			return
+		}
+		if !json.Valid(body) {
+			http.Error(w, "the body is not JSON", http.StatusBadRequest)
+			return
+		}
 
 		_, err = client.Send(r.Context(), flow.Event{
-			// A stable ID: if GitHub sends this delivery again, the engine sees the
-			// same event, and each function runs once for it.
+			// A stable ID: a redelivery of this delivery has the same ID, so the
+			// engine sees the same event, and each function runs once for it.
 			ID:   flow.StrPtr("github-" + delivery),
 			Name: "github/" + kind,
 			Data: json.RawMessage(body),
 		})
 		if err != nil {
-			// Not queued: answer an error, so GitHub sends it again later.
+			// Not queued: answer an error. GitHub marks the delivery as failed; it
+			// does not send it again by itself, but you can redeliver it.
 			log.Printf("could not send the event: %v", err)
 			http.Error(w, "try again", http.StatusInternalServerError)
 			return

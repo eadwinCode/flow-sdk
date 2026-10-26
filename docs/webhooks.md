@@ -37,6 +37,10 @@ GitHub signs each delivery with a secret you choose when you set up the webhook.
 sends the signature in `X-Hub-Signature-256`, the kind of event in `X-GitHub-Event`,
 and an ID for the delivery in `X-GitHub-Delivery`.
 
+When you set up the webhook in GitHub, set **Content type** to `application/json`.
+With the other choice, `application/x-www-form-urlencoded`, GitHub sends the JSON
+inside a form field, and the routes below answer `415`.
+
 ::: code-group
 <<< @/../examples/ts/webhooks.ts#route [TypeScript]
 <<< @/../examples/go/webhooks/main.go#route [Go]
@@ -44,17 +48,29 @@ and an ID for the delivery in `X-GitHub-Delivery`.
 
 What the route does, and why:
 
+- **It takes JSON only.** Any other `Content-Type` gets `415`.
+- **It reads at most 999,000 bytes.** The engine takes one event of up to 1,000,000
+  bytes, so this leaves room for the event's id, name and time. A bigger body gets
+  `413` (in Express, `express.raw()`'s `limit` and a small error handler; in Go,
+  `http.MaxBytesReader`), and no event is sent. See
+  [Limits and gotchas](#limits-and-gotchas).
 - **It checks the signature over the raw bytes.** Parse the JSON only after the
-  check. (In Express, `express.raw()` on this route keeps the bytes.)
+  check. (In Express, `express.raw()` on this route keeps the bytes.) A bad signature
+  gets `401`; a body that is not JSON gets `400`.
 - **It names the event after the webhook:** `github/push`, `github/pull_request`, and
   so on. Functions pick the events they want by name.
 - **It sends the webhook's body as the event's data**, so functions read
   `event.data.repository.full_name` as GitHub sent it.
-- **It gives the event a stable `id`:** `github-<delivery ID>`. Pick an ID that stays
-  the same when the sender sends the same thing again; check your sender's docs for
-  which one does. For Stripe, the event's own `id` field (`evt_...`) is a good one.
+- **It gives the event a stable `id`:** `github-<delivery ID>`. GitHub keeps the same
+  `X-GitHub-Delivery` when you redeliver a delivery. A delivery with no
+  `X-GitHub-Delivery` gets `400` and sends no event: with no ID, every such delivery
+  would get the same event ID, and later ones would count as repeats. Pick an ID that
+  stays the same when the sender sends the same thing again; check your sender's docs
+  for which one does. For Stripe, the event's own `id` field (`evt_...`) is a good one.
 - **It answers after the event is queued, not after the work.** If `flow.send` fails,
-  it answers `500`, so the sender tries again later.
+  it answers `500`. GitHub does not send a failed delivery again by itself: redeliver
+  it from the webhook's **Recent deliveries** in GitHub (up to 3 days back), or with
+  GitHub's API.
 
 ## Each delivery is handled once
 
@@ -182,9 +198,12 @@ when another one fails.
 
 ## Limits and gotchas
 
-- **One event is at most 1 MB** (all its fields, as JSON); a request at most 10 MB
-  and 100 events. A webhook body bigger than that fails with `413`: send only the
-  fields your functions need.
+- **One event is at most 1,000,000 bytes** (all its fields, as JSON); a request at
+  most 10 MB and 100 events. The engine answers `413` to a bigger one, and the SDK
+  gives that back as a plain error (`sending events failed (413): ...`). So the routes
+  here refuse a body over 999,000 bytes themselves, with `413`, before they send.
+  GitHub sends deliveries of up to 25 MB. If yours can be bigger, raise the read
+  limit and send only the fields your functions need.
 - **Event names** are 1 to 256 characters, and case-sensitive: `github/push` and
   `GitHub/push` are two names.
 - **The ID window:** a repeat of the same `id` is caught while the first run is kept
