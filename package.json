@@ -12,8 +12,8 @@
   },
   "scripts": {
     "typecheck": "bun run --workspaces typecheck",
-    "test": "bun run --workspaces --if-present test",
-    "build": "bun run --workspaces --if-present build",
+    "test": "for p in packages/*; do bun run --cwd \"$p\" test || exit 1; done",
+    "build": "for p in packages/*; do bun run --cwd \"$p\" build || exit 1; done",
     "examples:ts": "bun run --filter @clevix/flow-examples typecheck",
     "examples:go": "cd examples/go && test -z \"$(gofmt -l .)\" && go vet ./... && go build -o /dev/null ./...",
     "examples:check": "bun run examples:ts && bun run examples:go",
