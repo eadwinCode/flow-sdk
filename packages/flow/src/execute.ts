@@ -3,7 +3,7 @@ import { NonRetriableError, RetryAfterError, serializeError, StepError } from ".
 import { sha1Hex } from "./sha1.ts";
 import type { FlowFunction, HandlerContext, StepRunInfo, StepTools } from "./types.ts";
 
-// Runs one call of a function (see docs/sdk-protocol.md, "Running a function").
+// Runs one call of a function (see docs/protocol.md, "Running a function").
 //
 // The handler runs from the top. A memoized step resolves at once, so the code keeps
 // going. A new step returns a promise that never resolves in this request. Once the

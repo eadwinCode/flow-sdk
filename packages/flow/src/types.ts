@@ -1,7 +1,7 @@
 import type { CancelOn, FlowEvent, IncomingEvent, Json, SerializedError } from "@clevix/protocol";
 
 // Public types of the SDK. Config option shapes follow Inngest's `inngest` package
-// and are sent to the engine as given (see docs/sdk-protocol.md, "Sync").
+// and are sent to the engine as given (see docs/protocol.md, "Sync").
 
 /** "30s", "5m", "7d", "1h30m", or milliseconds as a number. */
 export type Duration = string | number;

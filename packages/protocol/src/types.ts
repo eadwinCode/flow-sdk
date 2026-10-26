@@ -65,7 +65,7 @@ export interface InvokeRequest {
   /**
    * The run's state is too big to send in this request (over MAX_REQUEST_STATE_BYTES):
    * `memo` is {} and `events` is []. The SDK loads both from the engine's run state API
-   * (`GET /runs/:runId/state`, see docs/sdk-protocol.md) before it runs the function.
+   * (`GET /runs/:runId/state`, see docs/protocol.md) before it runs the function.
    * `event` is always sent. Same idea as Inngest's `use_api`.
    */
   useApi?: boolean;
