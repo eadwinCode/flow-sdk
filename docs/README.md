@@ -34,7 +34,6 @@ Reference:
 - [HTTP API](http-api.md): the engine's routes and your endpoint
 - [Limits](limits.md)
 - [Protocol](protocol.md): how an SDK talks to the engine, for SDK authors
-- [Coming from Inngest](coming-from-inngest.md)
 
 Work on the site: `bun run docs:dev` in the repo root. `bun run docs:build` fails on
 a dead link or a missing code snippet.

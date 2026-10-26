@@ -96,7 +96,6 @@ export default defineConfig({
           { text: 'HTTP API', link: '/http-api' },
           { text: 'Limits', link: '/limits' },
           { text: 'Protocol (for SDK authors)', link: '/protocol' },
-          { text: 'Coming from Inngest', link: '/coming-from-inngest' },
         ],
       },
     ],
