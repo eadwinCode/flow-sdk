@@ -1,0 +1,191 @@
+/*
+ * The look of flow.clevixstudio.com, laid over the default VitePress theme.
+ *
+ * The landing page's tokens: background #fbfaf7, card #ffffff, text #0d1b2a (navy),
+ * muted #56606c, surface #f2f0eb, border #e5e3de, accent #f2b92f (amber), button text
+ * #f5f3ee. Fonts: IBM Plex Sans for text, Geist Mono for code and small labels.
+ * Corners are square.
+ *
+ * Amber is too light to read as text on the light background, so in light mode links
+ * and buttons are navy and amber is only an accent (the logo, the bar under the home
+ * title, the bar on the current sidebar item). Dark mode uses the same two colours the
+ * other way round: navy background, amber links and buttons.
+ */
+
+:root {
+  --flow-navy: #0d1b2a;
+  --flow-amber: #f2b92f;
+
+  --vp-font-family-base: 'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif;
+  --vp-font-family-mono: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  --vp-c-bg: #fbfaf7;
+  --vp-c-bg-alt: #f2f0eb;
+  --vp-c-bg-elv: #ffffff;
+  --vp-c-bg-soft: #f2f0eb;
+
+  --vp-c-text-1: #0d1b2a;
+  --vp-c-text-2: #56606c;
+  --vp-c-text-3: #7b848e;
+
+  --vp-c-divider: #e5e3de;
+  --vp-c-border: #e5e3de;
+  --vp-c-gutter: #e5e3de;
+
+  --vp-c-brand-1: #0d1b2a;
+  --vp-c-brand-2: #1f3044;
+  --vp-c-brand-3: #0d1b2a;
+  --vp-c-brand-soft: rgba(242, 185, 47, 0.18);
+
+  --vp-button-brand-bg: var(--flow-navy);
+  --vp-button-brand-border: var(--flow-navy);
+  --vp-button-brand-text: #f5f3ee;
+  --vp-button-brand-hover-bg: #1f3044;
+  --vp-button-brand-hover-border: #1f3044;
+  --vp-button-brand-hover-text: #f5f3ee;
+  --vp-button-brand-active-bg: #1f3044;
+  --vp-button-alt-bg: #ffffff;
+  --vp-button-alt-border: #e5e3de;
+  --vp-button-alt-text: #0d1b2a;
+  --vp-button-alt-hover-bg: #f2f0eb;
+  --vp-button-alt-hover-border: #56606c;
+  --vp-button-alt-hover-text: #0d1b2a;
+
+  --vp-home-hero-name-color: var(--flow-navy);
+  --vp-home-hero-name-background: none;
+
+  --vp-code-block-bg: #f2f0eb;
+  --vp-code-bg: rgba(13, 27, 42, 0.06);
+  --vp-code-color: #0d1b2a;
+  --vp-code-tab-bg: #f2f0eb;
+
+  --vp-c-success-1: #2c7a53;
+  --vp-c-danger-1: #a33a3a;
+
+  --vp-custom-block-tip-bg: rgba(242, 185, 47, 0.12);
+  --vp-custom-block-tip-border: transparent;
+
+  --vp-nav-logo-height: 28px;
+}
+
+.dark {
+  --vp-c-bg: #0d1b2a;
+  --vp-c-bg-alt: #0a1622;
+  --vp-c-bg-elv: #13263a;
+  --vp-c-bg-soft: #13263a;
+
+  --vp-c-text-1: #f5f3ee;
+  --vp-c-text-2: #a3abb5;
+  --vp-c-text-3: #7b848e;
+
+  --vp-c-divider: #22344a;
+  --vp-c-border: #22344a;
+  --vp-c-gutter: #0a1622;
+
+  --vp-c-brand-1: #f2b92f;
+  --vp-c-brand-2: #f5c95c;
+  --vp-c-brand-3: #f2b92f;
+  --vp-c-brand-soft: rgba(242, 185, 47, 0.16);
+
+  --vp-button-brand-bg: var(--flow-amber);
+  --vp-button-brand-border: var(--flow-amber);
+  --vp-button-brand-text: var(--flow-navy);
+  --vp-button-brand-hover-bg: #f5c95c;
+  --vp-button-brand-hover-border: #f5c95c;
+  --vp-button-brand-hover-text: var(--flow-navy);
+  --vp-button-brand-active-bg: #f5c95c;
+  --vp-button-alt-bg: transparent;
+  --vp-button-alt-border: #22344a;
+  --vp-button-alt-text: #f5f3ee;
+  --vp-button-alt-hover-bg: #13263a;
+  --vp-button-alt-hover-border: #a3abb5;
+  --vp-button-alt-hover-text: #f5f3ee;
+
+  --vp-home-hero-name-color: #f5f3ee;
+
+  --vp-code-block-bg: #0a1622;
+  --vp-code-bg: rgba(245, 243, 238, 0.08);
+  --vp-code-color: #f5f3ee;
+  --vp-code-tab-bg: #0a1622;
+
+  --vp-custom-block-tip-bg: rgba(242, 185, 47, 0.1);
+}
+
+/* Square corners, as on the landing page. */
+.VPButton,
+.VPFeature,
+.VPNavBarSearch .DocSearch-Button,
+.vp-doc div[class*='language-'],
+.vp-code-group .tabs,
+.vp-doc .custom-block,
+.vp-doc table,
+.vp-doc :not(pre) > code,
+.VPLocalSearchBox .shell,
+.VPLocalSearchBox .search-bar {
+  border-radius: 0 !important;
+}
+
+/* Headings in the text font, a little tighter, like the landing page. */
+.vp-doc h1,
+.vp-doc h2,
+.vp-doc h3,
+.VPHero .name,
+.VPHero .text {
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+/* Links in the text: the link colour, with an amber underline. */
+.vp-doc a {
+  text-decoration: underline;
+  text-decoration-color: var(--flow-amber);
+  text-decoration-thickness: 2px;
+  text-underline-offset: 3px;
+}
+.vp-doc a:hover {
+  color: var(--vp-c-brand-2);
+}
+
+/* The current page in the sidebar: an amber bar, like the accent on the landing page. */
+.VPSidebarItem.is-active > .item .indicator {
+  background-color: var(--flow-amber);
+}
+
+/* Home: the short amber bar under the title. */
+.VPHero .text::after {
+  content: '';
+  display: block;
+  width: 72px;
+  height: 6px;
+  margin-top: 24px;
+  background: var(--flow-amber);
+}
+.VPHero.has-image .text::after {
+  margin-left: auto;
+  margin-right: auto;
+}
+@media (min-width: 960px) {
+  .VPHero.has-image .text::after {
+    margin-left: 0;
+  }
+}
+
+/* Home feature cards: white cards with a thin border, as on the landing page. The
+   default theme's own card rule is scoped, so this needs the parent class to win. */
+.VPFeatures .VPFeature {
+  background-color: var(--vp-c-bg-elv);
+  border: 1px solid var(--vp-c-border);
+}
+.VPFeature .title {
+  font-weight: 600;
+}
+
+/* Small labels in mono, upper case, spaced out, like the landing page's "HOSTED WORKFLOW ENGINE". */
+.VPSidebarItem.level-0 > .item > .text,
+.vp-doc table th {
+  font-family: var(--vp-font-family-mono);
+  font-size: 12px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--vp-c-text-2);
+}

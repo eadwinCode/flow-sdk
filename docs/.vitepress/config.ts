@@ -32,12 +32,24 @@ export default defineConfig({
   },
 
   head: [
-    ['meta', { name: 'theme-color', content: '#3c8772' }],
+    // The look of flow.clevixstudio.com: its logo as the tab icon, its navy, and its fonts.
+    ['link', { rel: 'icon', type: 'image/svg+xml', href: '/flow-sdk/logo.svg' }],
+    ['meta', { name: 'theme-color', content: '#0d1b2a' }],
+    ['link', { rel: 'preconnect', href: 'https://fonts.googleapis.com' }],
+    ['link', { rel: 'preconnect', href: 'https://fonts.gstatic.com', crossorigin: '' }],
+    [
+      'link',
+      {
+        rel: 'stylesheet',
+        href: 'https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600&display=swap',
+      },
+    ],
     ['meta', { property: 'og:title', content: 'Clevix Flow docs' }],
     ['meta', { property: 'og:description', content: description }],
   ],
 
   themeConfig: {
+    logo: '/logo.svg',
     search: { provider: 'local' },
 
     nav: [
