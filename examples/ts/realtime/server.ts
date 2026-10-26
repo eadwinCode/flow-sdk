@@ -30,7 +30,8 @@ const buildSite = flow.createFunction(
       return upload(event.data.deploymentId);
     });
 
-    // After the last step, so it is sent once.
+    // After the last step, this runs only on the run's last call. So it is sent
+    // once, unless that call fails and the engine tries it again.
     await progress(100, "Done");
   },
 );

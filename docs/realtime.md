@@ -96,7 +96,8 @@ progress: 100% Done
 - **A publish can be sent more than once.** `publish` is a plain call, not a step.
   Inside a step, it is sent again when that step is retried. **Outside** a step, it
   is sent again on every call: a publish before three steps goes out four times. Put
-  it inside a step, or after the last step.
+  it inside a step, or after the last step. After the last step, it runs only on the
+  run's last call: once, unless that call fails and the engine tries it again.
 - **No secrets in messages.** Anyone with a token for the channel sees every message
   on its topics.
 - **Do not let a publish fail your run.** In Go, log the error and go on. In
