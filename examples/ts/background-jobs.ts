@@ -48,16 +48,30 @@ app.use("/api/flow", serve({ client: flow, functions: [onboardUser] }));
 // Your own API. It saves the user, sends one event, and answers. The slow work
 // happens later, in the function.
 app.post("/signup", express.json(), async (req, res) => {
-  const userId = `user_${randomUUID()}`;
-  await saveUser(userId, req.body.email);
+  const email = req.body?.email;
+  if (typeof email !== "string" || email === "") {
+    res.status(400).json({ error: "email is required" });
+    return;
+  }
+  // One user per email: a second sign-up with the same email gets the same user.
+  const userId = await saveUser(email);
 
-  await flow.send({
-    // The same id for the same sign-up: if this call is tried again, the engine
-    // sees one event, and the function runs once.
-    id: `signup-${userId}`,
-    name: "user/signed-up",
-    data: { userId, email: req.body.email },
-  });
+  try {
+    await flow.send({
+      // The id comes from the saved user, so a retried sign-up sends the same id.
+      // If the engine got the first send, it sees one event, and the function runs
+      // once.
+      id: `signup-${userId}`,
+      name: "user/signed-up",
+      data: { userId, email },
+    });
+  } catch (err) {
+    // Not queued. The user is saved but will not be onboarded unless the caller
+    // tries again: answer an error so it does.
+    console.error("could not queue the sign-up", err);
+    res.status(503).json({ error: "try again" });
+    return;
+  }
 
   res.status(201).json({ userId });
 });
@@ -69,9 +83,16 @@ app.listen(port, () => console.log(`listening on http://127.0.0.1:${port}`));
 // ---- Stand-ins for your own database and email provider. ----
 
 const users = new Map<string, { email: string; account?: boolean; onboarded?: boolean }>();
+const userIdByEmail = new Map<string, string>();
 
-async function saveUser(userId: string, email: string): Promise<void> {
+// Saves the user, or finds the one saved with this email (like a unique column).
+async function saveUser(email: string): Promise<string> {
+  const known = userIdByEmail.get(email);
+  if (known) return known;
+  const userId = `user_${randomUUID()}`;
+  userIdByEmail.set(email, userId);
   users.set(userId, { email });
+  return userId;
 }
 
 async function createAccount(userId: string): Promise<void> {

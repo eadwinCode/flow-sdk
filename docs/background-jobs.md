@@ -35,12 +35,19 @@ event key in `FLOW_EVENT_KEY`.
 :::
 
 The event `id` matters. A network error can make `flow.send` fail after the engine
-got the event, and then your code tries again. With the same `id`, the
-engine sees one event: it gives back the same event ID, and each function runs once.
-See [Send an event only once](events.md#send-an-event-only-once).
+got the event, and then the sign-up is tried again. With the same `id`, the engine
+sees one event: it gives back the same event ID, and each function runs once. See
+[Send an event only once](events.md#send-an-event-only-once).
 
-If `flow.send` fails, it throws (Go: returns an error). The route above lets that
-become an error answer, so the caller knows the job was not queued.
+So the `id` must be the same on a retry. A new random ID per request would not be:
+here the `id` comes from the saved user, and `saveUser` finds the user already saved
+with that email, so a retried sign-up gets the same user and sends the same `id`.
+
+If `flow.send` fails, it throws (Go: returns an error). The user is saved by then,
+but no event is queued, so the user is not onboarded. The route answers `503`, so
+the caller knows to try again; the retry sends the same `id`. If the caller may
+never try again, this is not enough: save the event in the same database write as
+the user (an "outbox" table), and have a job send it until the send works.
 
 ## Do the work in a function
 

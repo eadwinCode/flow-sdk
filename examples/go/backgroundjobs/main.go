@@ -85,18 +85,26 @@ func signup(client *flow.Client) http.HandlerFunc {
 			http.Error(w, "bad JSON", http.StatusBadRequest)
 			return
 		}
-		userID := "user_" + rand.Text()
-		saveUser(userID, body.Email)
+		if body.Email == "" {
+			http.Error(w, "email is required", http.StatusBadRequest)
+			return
+		}
+		// One user per email: a second sign-up with the same email gets the same user.
+		userID := saveUser(body.Email)
 
 		_, err := client.Send(r.Context(), flow.Event{
-			// The same ID for the same sign-up: if this call is tried again, the
-			// engine sees one event, and the function runs once.
+			// The ID comes from the saved user, so a retried sign-up sends the same
+			// ID. If the engine got the first send, it sees one event, and the
+			// function runs once.
 			ID:   flow.StrPtr("signup-" + userID),
 			Name: "user/signed-up",
 			Data: SignedUp{UserID: userID, Email: body.Email},
 		})
 		if err != nil {
-			http.Error(w, "could not queue the sign-up: "+err.Error(), http.StatusInternalServerError)
+			// Not queued. The user is saved but will not be onboarded unless the
+			// caller tries again: answer an error so it does.
+			log.Printf("could not queue the sign-up: %v", err)
+			http.Error(w, "try again", http.StatusServiceUnavailable)
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -130,16 +138,25 @@ func main() {
 // ---- Stand-ins for your own database and email provider. ----
 
 var (
-	mu    sync.Mutex
-	users = map[string]map[string]any{}
-	sent  = map[string]string{} // idempotency key -> email ID
-	tried = map[string]bool{}
+	mu            sync.Mutex
+	users         = map[string]map[string]any{}
+	userIDByEmail = map[string]string{}
+	sent          = map[string]string{} // idempotency key -> email ID
+	tried         = map[string]bool{}
 )
 
-func saveUser(userID, email string) {
+// saveUser saves the user, or finds the one saved with this email (like a unique
+// column), and gives back the user's ID.
+func saveUser(email string) string {
 	mu.Lock()
 	defer mu.Unlock()
+	if id, ok := userIDByEmail[email]; ok {
+		return id
+	}
+	userID := "user_" + rand.Text()
+	userIDByEmail[email] = userID
 	users[userID] = map[string]any{"email": email}
+	return userID
 }
 
 func createAccount(ctx context.Context, userID string) error {
