@@ -68,11 +68,16 @@ const sendReminder = flow.createFunction(
 
 const app = express();
 app.post("/reminders", express.json(), async (req, res) => {
-  const { userId, text, at } = req.body; // at: "2026-11-02T09:00:00Z"
+  const { userId, text, at } = req.body ?? {}; // at: "2026-11-02T09:00:00Z"
+  const ts = typeof at === "string" ? Date.parse(at) : NaN;
+  if (Number.isNaN(ts)) {
+    res.status(400).json({ error: 'at must be a date, like "2026-11-02T09:00:00Z"' });
+    return;
+  }
   const { ids } = await flow.send({
     name: "reminder/due",
     data: { userId, text },
-    ts: Date.parse(at), // the run waits, queued, until this time
+    ts, // the run waits, queued, until this time
   });
   res.status(202).json({ eventId: ids[0] });
 });

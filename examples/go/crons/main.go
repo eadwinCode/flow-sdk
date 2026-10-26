@@ -135,6 +135,11 @@ func reminders(client *flow.Client) http.HandlerFunc {
 			http.Error(w, "bad JSON", http.StatusBadRequest)
 			return
 		}
+		// A missing "at" is the zero time, not "now": refuse it.
+		if body.At.IsZero() {
+			http.Error(w, `at is required, like "2026-11-02T09:00:00Z"`, http.StatusBadRequest)
+			return
+		}
 		id, err := client.Send(r.Context(), flow.Event{
 			Name:      "reminder/due",
 			Data:      Reminder{UserID: body.UserID, Text: body.Text},

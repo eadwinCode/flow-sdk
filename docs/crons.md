@@ -158,6 +158,10 @@ makes the run at once, as **Queued**, and starts it at that time.
 <<< @/../examples/go/crons/main.go#at-a-time [Go]
 :::
 
+The route answers `400` when `at` is missing or is not a date. Check it yourself: a
+missing `at` would give a `ts` that is not a number (TypeScript), or the zero time,
+which is long past, so the run would start at once (Go).
+
 On a local engine, a reminder sent for 20 seconds later was **Queued** at first, then
 **Completed** at that time.
 
