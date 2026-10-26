@@ -47,6 +47,7 @@ jobs:
       - run: bun run typecheck
       - run: bun run test
       - run: bun run build
-      # The docs site fails on a dead link. Build it here so a bad link fails the
-      # pull request, not the Pages deploy after the merge.
+      # The docs site fails on a dead link, and scripts/check-docs.mjs on a missing
+      # code snippet or heading. Build it here so they fail the pull request, not
+      # the Pages deploy after the merge.
       - run: bun run docs:build

@@ -17,10 +17,10 @@ engine.
 | `FLOW_SIGNING_KEY` | `signkey-<64 hex>`, the app's own key. Checks calls from the engine, and signs sync. Required unless dev mode. |
 | `FLOW_SIGNING_KEY_FALLBACK` | Old key while rotating. Calls signed with either key are accepted. |
 | `FLOW_EVENT_KEY` | Event key, for sending events. |
-| `FLOW_BASE_URL` | Engine URL. Default: `https://worker.flow.clevixstudio.com`. |
+| `FLOW_BASE_URL` | Engine URL. Default: `https://worker.flow.clevixstudio.com` (`https://worker.clevixstudio.com` in v0.6.5 and before). |
 | `FLOW_DEV` | `1` turns off signature checks. Without it, the SDK refuses to serve with no signing key. |
 
-Options passed in code win over these.
+Options passed in code win over these. [Settings](settings.md) has the details.
 
 ## The one endpoint
 
@@ -172,8 +172,12 @@ and an `AppManifest` body:
   1 to 128 chars (hex or base64). The engine never works it out itself: it only
   stores it and compares it. The `GET` manifest has it too, so a **Resync** stores it
   as well. A sync without it clears the guard below.
-- The engine answers 200 `{ ok, created, modified, archived, ... }`, or 400/401
-  with `{ error, status }`. Functions left out of the manifest are archived.
+- The engine answers 200 `{ ok, created, urlChanged, modified, archived }`, or an
+  error with `{ error, status }`: `400` (a bad manifest, with a message that names
+  the function), `401` (a bad key), `403` (another app's key, or the plan's app
+  limit, with `code: "AppLimitReached"`), `409` (see below, or an app being
+  deleted), `413` (a manifest over 1 MB). Functions left out of the manifest are
+  archived.
 - `409` with `code: "ManifestReplaced"` and `retryAt` (ms since epoch): the manifest
   has the hash that the last change replaced, less than 10 minutes ago. This is an
   old copy of the app during a rolling deploy (or a rollback by deploy), and the
@@ -213,7 +217,7 @@ On a `401`, the check and the `PUT` try the fallback key, as the other calls do.
 A wait for `retryAt` is measured from the answer's `Date` header, so the app's clock
 does not matter, plus 1 second. Every wait is at least 5 seconds. Long-running
 servers use a timer; on Workers the first request after that time runs the check,
-in `ctx.waitUntil`. Any failure is logged, and never stops the app. See [production.md](production.md#sync-on-every-deploy) for when
+in `ctx.waitUntil`. Any failure is logged, and never stops the app. See [Going to production](production.md#sync-on-every-deploy) for when
 each SDK runs it.
 
 `onFailure` (TypeScript only, in the config) becomes a second function in the
@@ -268,8 +272,8 @@ null. Then run as usual with that memo and those events.
   engine retries the call. Do not run the function with a partial memo.
 - Pages are about 4 MiB each, so a 32 MiB state is about 8 pages.
 - Use the current signing key for the bearer (not the fallback).
-- The key covers the whole engine: it can read every run, not only this app's (see
-  "Keys and signing" in architecture.md).
+- An app's key reads only its own app's runs, in its own workspace. Any other run
+  answers `404 run not found`.
 
 ### Step IDs
 

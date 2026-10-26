@@ -8,7 +8,12 @@
   still works for now, so apps on older SDKs keep running. It will be turned off
   later. If you set `FLOW_BASE_URL` to the old host, change it to the new one.
 - **Docs website:** the guides in `docs/` are now also built as a website with
-  VitePress, and put on GitHub Pages from `main`.
+  VitePress, and put on GitHub Pages from `main`
+  ([eadwincode.github.io/flow-sdk](https://eadwincode.github.io/flow-sdk/)). The docs
+  are rewritten for readers new to durable functions, with full guides for
+  background jobs, webhooks and crons, and new reference pages (settings, HTTP API,
+  limits). Every code example is a file in `examples/` that CI type-checks (and, for
+  Go, vets and builds) against the SDK. `docs/scheduling.md` is now `docs/crons.md`.
 - **This repo uses Bun instead of pnpm** to install, test and pack. Apps change
   nothing: the release `.tgz` files hold the same files and the same code as
   before. Only small details of the packed `package.json` differ (no `prepack`

@@ -1,46 +1,34 @@
 # Local development
 
-Two ways to run your functions while you work on them:
+While you work on your functions, your app runs on your laptop. The engine must be
+able to call it. There are two ways:
 
-- **[A local engine](#a-local-engine-on-your-machine)** on your machine: the whole
-  engine and its dashboard, no account and no internet needed. Your app runs on
-  plain `http` on your machine, and you can reset everything at any time. This needs
-  access to the engine (see below).
+- **[A local engine](#a-local-engine-on-your-machine)**: the whole engine and its
+  dashboard on your machine. No internet, no `https`, and you can reset it at any
+  time. This needs access to the engine's code or its private Docker image, so it is
+  for team members.
 - **[The hosted engine through a tunnel](#the-hosted-engine-through-a-tunnel)**: your
   app on your laptop, the real engine calling it through a public `https` URL.
 
-- [A local engine on your machine](#a-local-engine-on-your-machine)
-- [Point your app at it](#point-your-app-at-it)
-- [Your app in Docker](#your-app-in-docker)
-- [What works locally](#what-works-locally)
-- [The hosted engine through a tunnel](#the-hosted-engine-through-a-tunnel)
-- [Troubleshooting](#troubleshooting)
-
 ## A local engine on your machine
 
-The engine is not open source. Team members can run it in one of two ways:
+The engine is not open source. Team members run it one of two ways.
 
-**Docker image** (private, `ghcr.io/eadwincode/flow-dev`). Log in once with a GitHub
-token that has `read:packages` (for example `gh auth refresh -s read:packages`, then
-`gh auth token`):
+**From the engine's repo** (needs Node 22+, Bun 1.4+ and the repo's dependencies,
+`pnpm install`):
+
+```bash
+bun run dev
+```
+
+**From the Docker image** (private, `ghcr.io/eadwincode/flow-dev`). Log in once with
+a GitHub token that has `read:packages`:
 
 ```bash
 echo "$TOKEN" | docker login ghcr.io -u <your github user> --password-stdin
 docker run --rm -p 127.0.0.1:8787:8787 -p 127.0.0.1:5173:5173 \
   --add-host=host.docker.internal:host-gateway \
   -v flow-dev-data:/data ghcr.io/eadwincode/flow-dev
-```
-
-`--add-host` lets the engine call an app on your machine as `host.docker.internal`.
-Docker Desktop (macOS, Windows) has that name anyway; plain Docker on Linux needs the
-flag, and there your app must listen on `0.0.0.0`, not only `127.0.0.1`. The engine
-repo's `compose.dev.yml` does the same.
-
-**From the engine's repo**, with Node 22+, pnpm 9 and Bun 1.4+:
-
-```bash
-pnpm install     # once, and after the dependencies change
-bun run dev
 ```
 
 Either way you get:
@@ -50,35 +38,41 @@ Either way you get:
 | The engine (your app's `FLOW_BASE_URL`) | `http://127.0.0.1:8787` |
 | The dashboard | `http://localhost:5173` |
 
-The first start makes the engine's secrets and prints a **setup token**. Open the
-dashboard: it goes to `/setup`. Type the token and make your admin user. Runs, apps,
-keys and users are kept between starts (in the `flow-dev-data` volume, or in the
-repo's `.wrangler/` folders). To start over, delete the volume
-(`docker volume rm flow-dev-data`) or run `bun run dev --reset`.
+Keep the ports on `127.0.0.1` as above, so others on your network can not reach
+them.
 
-Keep the ports on `127.0.0.1` as above: the local engine and dashboard are not meant
-to be reached by others on your network.
+### The first start
 
-Use `127.0.0.1` rather than `localhost` for the engine in your app: the engine listens
-on IPv4, and some runtimes (Node among them) try `localhost` as IPv6 (`::1`) first.
-Open the dashboard as `http://localhost:5173`: its login cookie is `Secure`, and
-browsers allow that on `http://localhost`.
+The first start makes the engine's secrets and prints a **setup code**. Open the
+dashboard: it sends you to `/setup`. Type the code and make a **staff user**. A
+staff user is in no workspace yet, so make one:
+
+1. Sign up as a normal user, as in the [Quick start](getting-started.md#1-sign-up-and-get-a-workspace).
+   With `bun run dev`, sign-up is off until you add `SIGNUP_OPEN=1` to
+   `workers/dashboard/.dev.vars`. Emails are not sent: each one is written to a file
+   under `workers/dashboard/.wrangler/tmp/email/`, and the log prints its path, so
+   open it for the link.
+2. Give the new account a plan without paying: as the staff user, open the staff
+   console (`/staff`), open the account, and click **Comp the plan**.
+
+Runs, apps, keys and users are kept between starts. To start over, run
+`bun run dev --reset`, or delete the Docker volume (`docker volume rm flow-dev-data`).
 
 ## Point your app at it
 
-1. In the local dashboard, **Apps → Add app**. Press **Generate** for a signing key
-   (and an event key, if your app sends events), and copy them.
+1. In the local dashboard, **Apps**, then **Add app**. **Generate** a signing key
+   and an event key, and copy them.
 2. Start your app with:
 
    ```bash
    FLOW_BASE_URL=http://127.0.0.1:8787
    FLOW_SIGNING_KEY=<the signing key from Add app>
-   FLOW_EVENT_KEY=<the event key, if your app sends events>
+   FLOW_EVENT_KEY=<the event key>
    ```
 
    Keep the signature check on: do **not** set `FLOW_DEV=1`. The local engine signs
    its calls like the real one, so your app runs as it will in production.
-3. Back in Add app, type your endpoint's URL **as the engine reaches it**, and press
+3. In **Add app**, type your endpoint's URL **as the engine reaches it**, and click
    **Connect**:
 
    | The engine runs... | Your app runs... | URL to type |
@@ -87,14 +81,23 @@ browsers allow that on `http://localhost`.
    | in Docker | on your machine | `http://host.docker.internal:<port>/api/flow` |
    | in Docker | in the same compose file | `http://<service>:<port>/api/flow` |
 
-   Plain `http` is fine here: the local engine allows it (the real one only takes
-   `https`).
-4. Send an event to `http://127.0.0.1:8787/e` (or with `flow.send()` /
+   Plain `http` is fine here. The local engine allows it; the hosted one only takes
+   public `https` URLs.
+4. Send an event to `http://127.0.0.1:8787/e` (with curl, `flow.send()` or
    `client.Send()`), and watch the run in the dashboard.
 
-After you add or change functions, sync again: **Resync** on the Apps page.
+Use `127.0.0.1` rather than `localhost` for the engine: it listens on IPv4, and some
+runtimes (Node among them) try `localhost` as IPv6 first. Open the dashboard as
+`http://localhost:5173`: its login cookie is `Secure`, and browsers allow that on
+`http://localhost`.
 
-A `PUT` to your endpoint also syncs, and it **saves the URL your request used as the
+### Syncing while you work
+
+Each time your app starts, it syncs its functions by itself (the SDK compares a hash
+of its functions with the engine's copy). So after you change a function, restart
+the app. You can also click **Resync** on the Apps page.
+
+A `PUT` to your own endpoint syncs too, and **saves the URL the request used as the
 app's URL**. So send it with the address the engine uses:
 
 ```bash
@@ -103,14 +106,13 @@ curl -X PUT http://127.0.0.1:<port>/api/flow
 
 # engine in Docker: give the engine's address in the Host header
 curl -X PUT http://127.0.0.1:<port>/api/flow -H "Host: host.docker.internal:<port>"
-curl -X PUT http://127.0.0.1:<port>/api/flow -H "Host: <service>:<port>"   # same compose file
 ```
 
-A plain `curl -X PUT http://127.0.0.1:<port>/...` under Docker would save
-`127.0.0.1` as the app's URL. That is the engine's own container, so every step call
-then fails. Send the `PUT` again with the right `Host` to fix it. (Both SDKs build the
-URL from the request's host; a server that does not pass the `Host` header on can use
-**Resync** instead, which keeps the saved URL.)
+The answer lists what changed, for example:
+
+```json
+{"ok":true,"created":false,"urlChanged":null,"modified":[],"archived":[]}
+```
 
 ## Your app in Docker
 
@@ -125,7 +127,7 @@ services:
 
   shop:
     build: .
-    ports: ["127.0.0.1:8080:8080"]
+    ports: ["127.0.0.1:3000:3000"]
     environment:
       FLOW_BASE_URL: http://flow-dev:8787
       FLOW_SIGNING_KEY: ${FLOW_SIGNING_KEY}
@@ -135,79 +137,62 @@ volumes:
   flow-dev-data:
 ```
 
-In Add app, the URL is `http://shop:8080/api/flow`. Your app calls the engine at
-`http://flow-dev:8787`; your browser still uses `http://localhost:5173` for the
-dashboard.
+In **Add app**, the URL is `http://shop:3000/api/flow`. Your browser still uses
+`http://localhost:5173` for the dashboard.
 
 If the engine runs with `bun run dev` and only your app is in Docker, use
 `FLOW_BASE_URL=http://host.docker.internal:8787` in the app, the URL
-`http://host.docker.internal:<port>/api/flow` in Add app, and start the engine with
-that host allowed: `FLOW_ALLOW_HTTP_HOSTS=host.docker.internal bun run dev`. That works
-as is on Docker Desktop. On Linux, `bun run dev` listens only on `127.0.0.1`, which a
-container cannot reach: add `--host 0.0.0.0` (the engine is then open to your network
-too, so only do it on a network you trust), and run the app's container with
-`--add-host=host.docker.internal:host-gateway`.
+`http://host.docker.internal:<port>/api/flow` in Add app, and allow that host:
+`FLOW_ALLOW_HTTP_HOSTS=host.docker.internal bun run dev`.
 
 ## What works locally
 
-Everything the engine does: steps and retries, sleeps, `waitForEvent`, `sendEvent`,
-`step.invoke` (also between your local apps), flow control, cron triggers, failure
-and cancel handlers, the run timeline, and [realtime](realtime.md). The realtime
-token's `url` points at the local engine (`ws://127.0.0.1:8787/...` with `bun run dev`,
-`ws://localhost:8787/...` with the image), so the browser connects there with no
-change in your code.
+Everything the engine does: steps and retries, sleeps, waiting for events, sending
+events from steps, invoking other functions, flow control, cron triggers, failure
+handlers, the run timeline, and [realtime](realtime.md). Cron triggers fire on time.
 
-Old runs go away as in production: a run deletes itself 3 days after it ends (4 if
-it failed). To keep one longer, press **Keep** on its run page. The engine's daily
-cleanup (03:17 UTC) also runs, as in production; it only clears what is left over
-(old events and alerts, expired keys and sessions, dashboard audit rows after 90
-days). `bun run dev --no-cron` turns the cleanup off.
-
-Your app does not need a public URL, a tunnel or `https`.
+Old runs go away as in production: 3 days after a run ends (4 days if it failed).
+**Keep** on a run's page keeps it. The engine's daily cleanup runs at 03:17 UTC;
+`bun run dev --no-cron` turns it off.
 
 ## The hosted engine through a tunnel
 
-Without access to a local engine, use the hosted one. It must reach your endpoint
-over `https`, so it cannot call `http://localhost` directly. Use a tunnel, for
-example Cloudflare's:
+Without a local engine, use the hosted one. It calls your app over `https`, so it
+can not reach `localhost` on your laptop. Use a tunnel, for example Cloudflare's:
 
 ```bash
-cloudflared tunnel --url http://localhost:8080
+cloudflared tunnel --url http://localhost:3000
 ```
 
 It prints a public URL like `https://random-words.trycloudflare.com`. Then:
 
-1. Add a **separate app** in the dashboard for your laptop, so your local functions
-   do not replace the real app's functions on the engine. Your app's ID comes from
-   your code (`new Flow({ id })` / `flow.ClientOpts{AppID}`): use one of your own,
-   for example `shop-dev-ada`.
-2. Set `FLOW_SIGNING_KEY` to that app's key and start your app.
+1. Use an app ID of your own for your laptop, for example `shop-dev-ada`, so your
+   local functions never replace the real app's functions. Add it as a separate app
+   in the dashboard.
+2. Start your app with that app's signing key.
 3. Connect it with the tunnel URL and the path:
    `https://random-words.trycloudflare.com/api/flow`.
-4. Send an event as in [Getting started](getting-started.md#6-send-an-event).
 
-Each time the tunnel gives you a new URL, sync with a `PUT` through the new URL
-(`curl -X PUT https://<new tunnel URL>/api/flow`): a `PUT` sync saves the URL of the
-request it gets as the app's URL, so use the tunnel URL, not `localhost`.
+Each time the tunnel gives you a new URL, sync through the new URL
+(`curl -X PUT https://<new tunnel URL>/api/flow`), or use **Change URL** on the Apps
+page.
 
 A tunnel like this goes through Cloudflare's proxy, which ends a call that sends
-nothing for about 100 seconds (error `524`). SDK v0.6.0 and later send a heartbeat
-every 20 seconds while a step runs, so steps can run up to their step timeout
-(default 5 minutes, at most 14). With an older SDK, a step must finish in under 100
-seconds. See "Streamed answers" in [protocol.md](protocol.md).
+nothing for about 100 seconds. The SDK sends a small heartbeat every 20 seconds while
+a step runs, so steps can still run up to their step timeout.
 
-`FLOW_DEV=1` turns off signature checks in the SDK. Use it only for quick tests where
-nothing but your own engine can reach your app. Never set it on a public app: anyone
-could then call your functions.
+`FLOW_DEV=1` turns off the signature check in the SDK. Use it only for a quick test
+that nothing but you can reach. Never set it on a public app: anyone could then call
+your functions.
 
 ## Troubleshooting
 
 | Problem | Cause and fix |
 | --- | --- |
 | `docker run` says `denied` or `unauthorized` | You are not logged in to `ghcr.io`, or your token has no `read:packages`, or no access to the package. |
-| Add app says `app url must be https` | The engine was started some other way than `bun run dev`, the image, or `pnpm dev` in the engine's `workers/engine` (only those allow plain `http`). Or the host is not allowed: these allow `localhost` and `127.0.0.1`; add others with `FLOW_ALLOW_HTTP_HOSTS` (the image allows any host). |
-| Add app says the app does not answer | The engine cannot reach the URL you typed. From inside Docker, `localhost` is the container itself: use `host.docker.internal` (on Linux, with `--add-host`, and your app on `0.0.0.0`) or the compose service name. |
-| Steps fail after a `curl -X PUT` sync, and the app shows **Down** | Under Docker, a `PUT` saved `127.0.0.1` as the app's URL. Send it again with the engine's address in the `Host` header (see [syncing](#point-your-app-at-it)), or use **Resync**. |
-| `401` from your app on every call | `FLOW_SIGNING_KEY` in your app is not the key you generated in the **local** dashboard (each engine has its own keys). |
-| Sending an event gives `401 invalid event key` | Use an event key from the local dashboard, and send it to `http://127.0.0.1:8787/e`, not the hosted engine. |
-| Runs stay **Queued** | The engine is not fully up yet, or it was started some other way than `bun run dev` or the image. They start the engine and its step worker together; started apart, steps are never sent. |
+| Add app says `app url must be https` | The host is not allowed over plain `http`. `bun run dev` allows `localhost` and `127.0.0.1`; add others with `FLOW_ALLOW_HTTP_HOSTS`. The Docker image allows any host. |
+| Add app says the app did not answer | The engine can not reach the URL you typed. From inside Docker, `localhost` is the container itself: use `host.docker.internal` or the compose service name. |
+| Steps fail after a `curl -X PUT` sync, and the app shows **Down** | Under Docker, a `PUT` saved `127.0.0.1` as the app's URL. Send it again with the engine's address in the `Host` header, or use **Resync**. |
+| Every call to your app gets `401` | `FLOW_SIGNING_KEY` is not the key from the **local** dashboard. Each engine has its own keys. |
+| Sending an event gives `401 invalid event key` | Use an event key from the local dashboard, and send it to `http://127.0.0.1:8787/e`. |
+| The app logs `the sync failed (400): invalid url` at start | The engine does not know the app's URL yet. Add the app (Connect), or sync once with `curl -X PUT <app-url>`. |
