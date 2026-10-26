@@ -33,7 +33,7 @@
   --vp-c-gutter: #e5e3de;
 
   --vp-c-brand-1: #0d1b2a;
-  --vp-c-brand-2: #1f3044;
+  --vp-c-brand-2: #2e4a66;
   --vp-c-brand-3: #0d1b2a;
   --vp-c-brand-soft: rgba(242, 185, 47, 0.18);
 
@@ -109,6 +109,10 @@
   --vp-code-tab-bg: #0a1622;
 
   --vp-custom-block-tip-bg: rgba(242, 185, 47, 0.1);
+
+  /* The landing page's green and red are too dark to read on navy. */
+  --vp-c-success-1: #4fbf87;
+  --vp-c-danger-1: #e58a8a;
 }
 
 /* Square corners, as on the landing page. */
@@ -188,4 +192,19 @@
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--vp-c-text-2);
+}
+/* Code in a table header is an API name: keep it as written, so it can be copied. */
+.vp-doc table th code {
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+/* The top bar: the link colour is the text colour in light mode, so mark the current
+   section and hover with an amber underline instead of a colour change. */
+.VPNavBarMenuLink.active,
+.VPNavBarMenuLink:hover {
+  text-decoration: underline;
+  text-decoration-color: var(--flow-amber);
+  text-decoration-thickness: 2px;
+  text-underline-offset: 6px;
 }
