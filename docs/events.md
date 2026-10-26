@@ -96,6 +96,11 @@ run: while it runs, and 3 days after it ends (4 days after it failed). The same 
 in another workspace is another event. Events sent with `step.sendEvent` follow the
 same rule.
 
+A function with `debounce` or `batchEvents` handles a repeat its own way.
+`debounce` takes it as a new event: it pushes the start back, and once the run has
+started, a repeat starts a new wait. `batchEvents` skips a repeat that is in a batch
+now, or was in one up to 1 hour ago.
+
 To run a function once per *value in the data* (one run per order, whatever the
 event), use the function's [idempotency](flow-control.md#idempotency) option instead.
 
@@ -127,10 +132,12 @@ Any program can send events with `POST /e` and the event key. See
 
 ## Events the engine sends
 
-Names that start with `inngest/` are sent by the engine: `inngest/scheduled.timer`,
+Names that start with `inngest/` belong to the engine: `inngest/scheduled.timer`,
 `inngest/function.failed`, `inngest/function.cancelled` and
-`inngest/function.invoked`. You can not send them, but your functions can be
-triggered by them. See [the table](webhooks.md#events-the-engine-sends).
+`inngest/function.invoked`. You can not send them. Your functions can be triggered
+by `inngest/function.failed` and `inngest/function.cancelled`. The other two are only
+the first event of a cron run or an invoked run: a trigger on them starts nothing.
+See [the table](webhooks.md#events-the-engine-sends).
 
 ## Limits
 

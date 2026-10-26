@@ -35,7 +35,7 @@ event key in `FLOW_EVENT_KEY`.
 :::
 
 The event `id` matters. A network error can make `flow.send` fail after the engine
-got the event, and then your code (or your user) tries again. With the same `id`, the
+got the event, and then your code tries again. With the same `id`, the
 engine sees one event: it gives back the same event ID, and each function runs once.
 See [Send an event only once](events.md#send-an-event-only-once).
 

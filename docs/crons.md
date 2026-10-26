@@ -216,6 +216,7 @@ fails as usual.
   cron functions may get no request, so add a `PUT` sync to your deploy. See
   [Going to production](production.md#a-backup-in-ci).
 - **A paused function skips its times.** They do not run later.
-- **Sleeps are as long as you like**, but a run is deleted 3 days after it ends.
+- **Sleeps are as long as you like**, but a run is deleted 3 days after it ends (4
+  days if it failed), unless you **Keep** it.
 - **Each cron run is a full run.** A cron every second is a run every second, with
   calls to your app.

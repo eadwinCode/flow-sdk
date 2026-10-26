@@ -47,7 +47,7 @@ The token looks like this (shortened):
 ```json
 {
   "token": "eyJ2IjoyLCJ3cyI6...",
-  "url": "ws://127.0.0.1:8788/v1/realtime/connect",
+  "url": "ws://127.0.0.1:8787/v1/realtime/connect",
   "channel": "deployment:dep_42",
   "topics": ["progress"],
   "expiresAt": 1793042255886

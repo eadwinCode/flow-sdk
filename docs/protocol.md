@@ -160,7 +160,7 @@ and an `AppManifest` body:
 - The bearer must be the app's own signing key (403 for another app's key).
 - `appId` and function IDs match `^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$`.
 - Each function needs at least one trigger: `{ "event": "...", "if"?: "..." }` or `{ "cron": "..." }`.
-- Config keys use Inngest's names and shapes and are copied as given: `retries`,
+- Config keys are copied as given: `retries`,
   `timeouts: { step, finish }`, `cancelOn`, `concurrency`, `throttle`, `rateLimit`,
   `debounce`, `batchEvents`, `priority`, `idempotency`, `singleton`. Durations are
   strings like `"30s"`, `"5m"`, `"7d"` or milliseconds as a number.
@@ -179,10 +179,11 @@ and an `AppManifest` body:
   deleted), `413` (a manifest over 1 MB). Functions left out of the manifest are
   archived.
 - `409` with `code: "ManifestReplaced"` and `retryAt` (ms since epoch): the manifest
-  has the hash that the last change replaced, less than 10 minutes ago. This is an
-  old copy of the app during a rolling deploy (or a rollback by deploy), and the
-  engine did not save it. `retryAt` is when the guard ends. A **Resync** is not
-  checked this way.
+  has a hash the app had before (one of its last 20), and a copy with the current
+  hash was seen (it synced, or checked in) less than 10 minutes ago. This is an old
+  copy of the app during a rolling deploy (or a rollback by deploy), and the engine
+  did not save it. `retryAt` is when the guard ends. A **Resync** is not checked this
+  way.
 
 ### Sync at boot
 
@@ -356,7 +357,7 @@ gets a new token and connects again.
 - A step output over 4 MB fails the step (`OutputTooLarge`), so a clear error early helps.
 - A run has at most 1,000 steps.
 - A run's whole state (its events, every step's output or error, and its output) is
-  capped at 32 MiB, like Inngest. Passing it fails the **whole run** at once, with
+  capped at 32 MiB. Passing it fails the **whole run** at once, with
   `StateOverflowed` ("The function run exceeded the state size limit of 33554432
   bytes."), no retry. It is not a step error the function can catch.
 - Step IDs (hashed) are 40 chars, well under the engine's 256.

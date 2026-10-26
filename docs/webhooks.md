@@ -75,7 +75,9 @@ signature.
 The app's log showed `chat: 2 new commit(s) in acme/shop` once.
 
 This holds while the engine keeps the run: while it runs, and 3 days after it ends
-(4 days after it failed). A delivery of the same ID after that starts new runs.
+(4 days after it failed). A delivery of the same ID after that starts new runs. A
+function with `debounce` or `batchEvents` handles repeats its own way: see
+[Events](events.md#send-an-event-only-once).
 
 ## The functions
 
@@ -108,7 +110,8 @@ to 2 days for a review of **that** pull request. If none comes, it reminds the t
 - `waitForEvent` gives back the event (TypeScript), or `step.ErrEventNotReceived`
   (Go) when the time runs out (TypeScript gives `null`).
 - An event that came a little **before** the wait started still counts: anything
-  after the step before the wait, up to one hour back.
+  that came after the step before the wait started (or after the run was made, if no
+  step came before), up to one hour back.
 
 On a local engine, the review arrived and the run **Completed** with
 `{"reviewed": true, "by": "grace"}`.
@@ -161,15 +164,18 @@ sends too fast.
 
 ## Events the engine sends
 
-The engine sends some events itself. Their names start with `inngest/`, a name you
-can not use for your own events. Your functions can be triggered by them:
+The engine makes some events itself. Their names start with `inngest/`, a name you
+can not use for your own events. Only `inngest/function.failed` and
+`inngest/function.cancelled` are sent out like other events, so only they can trigger
+your functions. The other two are only the first event of the run they start: a
+trigger on them starts nothing.
 
-| Name | When | `data` |
-| --- | --- | --- |
-| `inngest/scheduled.timer` | A cron trigger fires | `cron`, `scheduledAt` (ms) |
-| `inngest/function.failed` | A run fails for good | `function_id`, `run_id`, `error`, `event` |
-| `inngest/function.cancelled` | A run is cancelled | `function_id`, `run_id`, `event`, and `error` when there is one |
-| `inngest/function.invoked` | `step.invoke` starts a run | the `data` the caller passed |
+| Name | When | `data` | Can trigger a function |
+| --- | --- | --- | --- |
+| `inngest/scheduled.timer` | A cron trigger fires | `cron`, `scheduledAt` (ms) | no |
+| `inngest/function.failed` | A run fails for good | `function_id`, `run_id`, `error`, `event` | yes |
+| `inngest/function.cancelled` | A run is cancelled | `function_id`, `run_id`, `event`, and `error` when there is one | yes |
+| `inngest/function.invoked` | `step.invoke`, or **Invoke** in the dashboard, starts a run | the `data` the caller passed | no |
 
 See [Errors and retries](errors.md#when-a-run-fails-for-good) for a function that runs
 when another one fails.

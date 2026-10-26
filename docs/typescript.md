@@ -93,7 +93,7 @@ argument so the sync at boot can finish after the answer.
 | --- | --- |
 | `POST` | Runs a function. Signed by the engine. |
 | `PUT` | Syncs: sends the manifest to the engine, and gives back its answer. `curl -X PUT https://your-app/api/flow`. |
-| `GET` | Gives the manifest. Only for signed calls (the engine's **Add app** and **Resync**); otherwise `401`. |
+| `GET` | Gives the manifest. Only for signed calls (the engine's **Add app**, **Resync**, **Change URL** and its pings while the app is down); otherwise `401`. |
 
 ## `new Flow(options)`
 
@@ -170,7 +170,7 @@ See [Errors and retries](errors.md).
 | `streaming` | Default on. `false`, or `{ heartbeatMs }` (default 20000). Lets a long step run behind a proxy that ends quiet calls. See [Protocol](protocol.md#streamed-answers-sdk-v060-and-later). |
 
 `serve` throws at once if two functions have the same ID, or a function was made by
-another `Flow`.
+a `Flow` with another app ID.
 
 ## Other exports
 

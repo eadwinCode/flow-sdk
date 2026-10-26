@@ -151,7 +151,8 @@ Lets some runs go first when they wait for a [concurrency](#concurrency) slot.
   means "treat this run as if it had waited 2 minutes longer". A negative number
   puts a run back.
 - It only changes the order of work **waiting for a concurrency slot**. Without a
-  concurrency limit nothing waits, and priority does nothing.
+  concurrency limit (yours, or the plan's limit for the workspace, see below) nothing
+  waits, and priority does nothing.
 - If the expression fails or does not give a number, the priority is 0.
 
 ## Idempotency

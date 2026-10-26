@@ -23,8 +23,8 @@ Open the dashboard: [dashboard.flow.clevixstudio.com](https://dashboard.flow.cle
 3. You land on the account's **Billing** page. Pick a plan (**Choose ...**). A
    workspace can not add apps until its account has a plan.
 
-Were you invited? Sign up from the link in the invite. You join that team's account
-and its workspaces, and skip the plan step.
+Were you invited? Sign up from the link in the invite. You join that team's account,
+with the role and the workspaces the invite gives you, and skip the plan step.
 
 To add apps and make keys, your role must be **Owner**, **Admin** or **Developer**.
 
@@ -176,9 +176,9 @@ updates live. You see:
 
 ## What just happened
 
-- The engine called your endpoint three times, once per step. Each time, the
-  function ran from the top and the steps that were done gave back their saved
-  results. This is [replay](core-ideas.md#replay-code-outside-steps-runs-again).
+- The engine called your endpoint four times: once for each of the three steps,
+  and once more for the function to return. Each time, the function ran from the top
+  and the steps that were done gave back their saved results. This is [replay](core-ideas.md#replay-code-outside-steps-runs-again).
 - During the sleep, nothing ran and your app was not called.
 - When you deploy a new version, the app syncs its functions with the engine by
   itself when it starts. See [Going to production](production.md).

@@ -21,7 +21,8 @@ curl -X POST https://worker.flow.clevixstudio.com/e \
 - **Body:** one event, or a list of 1 to 100. Each event is
   `{ "name", "data"?, "id"?, "ts"?, "user"? }` (see [Events](events.md#what-an-event-holds)).
 - **All or nothing:** if one event is bad, none are taken.
-- **The same `id`** gives the same event ID, and no new runs.
+- **The same `id`** gives the same event ID, and no new runs while the first runs
+  are kept (see [Events](events.md#send-an-event-only-once)).
 
 Answers, as the engine gave them on a local engine:
 
@@ -73,7 +74,9 @@ is over 4 MB. Same key as sync; an app can read only its own runs.
 | `POST /v1/realtime/token` | signing key | `{ channel, topics }`: a token for one browser |
 | `GET /v1/realtime/connect?token=...` | the token | the WebSocket a browser opens |
 
-Without realtime set up on the engine, these answer `503`. See [Realtime](realtime.md).
+Publish answers `202 {"ok":true}`. Without realtime set up on the engine (no
+`REALTIME_TOKEN_SECRET`), the token and connect routes answer `503`. See
+[Realtime](realtime.md).
 
 ## `GET /health`
 

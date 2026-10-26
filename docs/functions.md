@@ -115,7 +115,8 @@ step above.
   `async` is the new one: `"async.data.orderId == event.data.orderId && async.data.carrier == 'dhl'"`.
 - `timeout` is required.
 - An event that came a little **before** the wait started still counts: anything
-  received after the step before the wait, up to one hour back.
+  received after the step before the wait started (or after the run was made, if no
+  step came before), up to one hour back.
 - One event ends every open wait it matches, in all runs.
 
 ### `sendEvent`: send events from a function
