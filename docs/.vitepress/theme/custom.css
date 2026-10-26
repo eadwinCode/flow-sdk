@@ -208,3 +208,12 @@
   text-decoration-thickness: 2px;
   text-underline-offset: 6px;
 }
+
+/* The top bar logo. Light mode shows the full CLEVIX FLOW logo, which has the name in
+   it, so the text name is hidden; dark mode shows the mark and the text name. */
+.VPNavBarTitle .logo.light {
+  height: 34px;
+}
+html:not(.dark) .flow-site-title {
+  display: none;
+}

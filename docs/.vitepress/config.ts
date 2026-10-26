@@ -51,7 +51,11 @@ export default defineConfig({
   ],
 
   themeConfig: {
-    logo: '/logo.svg',
+    // Light mode: the full CLEVIX FLOW logo from flow.clevixstudio.com. Its "CLEVIX" is
+    // navy, which would not show on the dark theme, so dark mode shows the mark and the
+    // site name as text instead (custom.css hides that text in light mode).
+    logo: { light: '/clevix-flow-logo.png', dark: '/logo.svg', alt: 'Clevix Flow' },
+    siteTitle: '<span class="flow-site-title">Clevix Flow</span>',
     search: { provider: 'local' },
 
     nav: [
