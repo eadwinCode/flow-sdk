@@ -34,9 +34,9 @@ export default defineConfig({
   head: [
     // The look of flow.clevixstudio.com: its logo as the tab icon, its colours, and its fonts.
     ['link', { rel: 'icon', type: 'image/svg+xml', href: '/flow-sdk/logo.svg' }],
-    // The phone's browser bar: the page colour in light mode, navy in dark mode.
-    ['meta', { name: 'theme-color', media: '(prefers-color-scheme: light)', content: '#fbfaf7' }],
-    ['meta', { name: 'theme-color', media: '(prefers-color-scheme: dark)', content: '#0d1b2a' }],
+    // The phone's browser bar: navy, like the default (dark) theme. theme/index.ts changes
+    // it when the reader switches to light.
+    ['meta', { name: 'theme-color', content: '#0d1b2a' }],
     ['link', { rel: 'preconnect', href: 'https://fonts.googleapis.com' }],
     ['link', { rel: 'preconnect', href: 'https://fonts.gstatic.com', crossorigin: '' }],
     [
@@ -49,6 +49,12 @@ export default defineConfig({
     ['meta', { property: 'og:title', content: 'Clevix Flow docs' }],
     ['meta', { property: 'og:description', content: description }],
   ],
+
+  // Dark by default for a new visitor. A reader can still switch. VitePress saves the
+  // switch as "auto" when it matches their system, so a light pick on a light system
+  // stays light only while the system stays light. Readers who visited before this
+  // change already have "auto" saved and keep following their system.
+  appearance: 'dark',
 
   themeConfig: {
     // Light mode: the full CLEVIX FLOW logo from flow.clevixstudio.com. Its "CLEVIX" is
