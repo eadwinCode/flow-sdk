@@ -32,12 +32,30 @@ export default defineConfig({
   },
 
   head: [
-    ['meta', { name: 'theme-color', content: '#3c8772' }],
+    // The look of flow.clevixstudio.com: its logo as the tab icon, its colours, and its fonts.
+    ['link', { rel: 'icon', type: 'image/svg+xml', href: '/flow-sdk/logo.svg' }],
+    // The phone's browser bar: the page colour in light mode, navy in dark mode.
+    ['meta', { name: 'theme-color', media: '(prefers-color-scheme: light)', content: '#fbfaf7' }],
+    ['meta', { name: 'theme-color', media: '(prefers-color-scheme: dark)', content: '#0d1b2a' }],
+    ['link', { rel: 'preconnect', href: 'https://fonts.googleapis.com' }],
+    ['link', { rel: 'preconnect', href: 'https://fonts.gstatic.com', crossorigin: '' }],
+    [
+      'link',
+      {
+        rel: 'stylesheet',
+        href: 'https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600&display=swap',
+      },
+    ],
     ['meta', { property: 'og:title', content: 'Clevix Flow docs' }],
     ['meta', { property: 'og:description', content: description }],
   ],
 
   themeConfig: {
+    // Light mode: the full CLEVIX FLOW logo from flow.clevixstudio.com. Its "CLEVIX" is
+    // navy, which would not show on the dark theme, so dark mode shows the mark and the
+    // site name as text instead (custom.css hides that text in light mode).
+    logo: { light: '/clevix-flow-logo.png', dark: '/logo.svg', alt: 'Clevix Flow' },
+    siteTitle: '<span class="flow-site-title">Clevix Flow</span>',
     search: { provider: 'local' },
 
     nav: [
