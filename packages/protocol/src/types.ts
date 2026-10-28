@@ -176,6 +176,8 @@ export interface FunctionConfig {
   retries?: number;
   timeouts?: { step?: string | number; finish?: string | number };
   cancelOn?: CancelOn[];
+  /** Up to 3 run tags: name to an expression over `event`, worked out when a run starts. */
+  tags?: Record<string, string>;
   [key: string]: unknown;
 }
 

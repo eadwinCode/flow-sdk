@@ -184,6 +184,10 @@ and an `AppManifest` body:
   copy of the app during a rolling deploy (or a rollback by deploy), and the engine
   did not save it. `retryAt` is when the guard ends. A **Resync** is not checked this
   way.
+- `409` with `code: "FunctionIdClash"`: a function's full ID (`<appId>-<function id>`)
+  is already used by another app's function in the workspace. App `a` with function
+  `b-c` and app `a-b` with function `c` are both `a-b-c`. Nothing is saved; rename
+  one of the two functions. Add app, Resync, Change URL and Move app refuse it too.
 
 ### Sync at boot
 

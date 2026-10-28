@@ -30,7 +30,8 @@ not see new versions of a URL install, so watch the releases (on GitHub: **Watch
 **Custom**, **Releases**).
 
 The package is ESM only and has its own types. It runs on Node 20 or later and on
-Cloudflare Workers. For Hono, Express or React, install that package too:
+Cloudflare Workers. `flow.realtime.subscribe` and `flow.streams.read` need a global
+`WebSocket` (Node 22 and later), or one passed as `WebSocket`. For Hono, Express or React, install that package too:
 `@clevix/flow` does not depend on them.
 
 v0.6.5 talks to `https://worker.clevixstudio.com` when `FLOW_BASE_URL` is not set.
@@ -113,7 +114,7 @@ when it is not set.
 ## `flow.createFunction(options, trigger, handler)`
 
 Gives back a function to pass to `serve`. It throws at once on a bad ID, no trigger,
-or a bad trigger. The options are in [Functions and steps](functions.md#all-function-options);
+a bad trigger, more than 3 `tags`, or a bad tag name. The options are in [Functions and steps](functions.md#all-function-options);
 the triggers in [Triggers](functions.md#triggers).
 
 The handler gets `{ event, events, step, runId, attempt }`, and its return value is
@@ -133,6 +134,10 @@ the run's output.
 Durations are text like `"500ms"`, `"30s"`, `"1h30m"`, `"3d"`, `"2w"` (units `ms`,
 `s`, `m`, `h`, `d`, `w`, no spaces), or a number of ms.
 
+`onFailure` gets the same as the handler, plus `error` (what the run failed with) and
+`attempts` (how many times the call that failed the run was tried; `0` when the run
+failed with no failed try).
+
 ## `flow.send(events, { env }?)`
 
 Sends one event or a list of up to 100. Gives back `{ ids, status }`. Throws
@@ -140,15 +145,87 @@ Sends one event or a list of up to 100. Gives back `{ ids, status }`. Throws
 `flow.send needs an event key (eventKey or FLOW_EVENT_KEY)` without a key. It does
 not retry. See [Events](events.md).
 
+## `flow.start(fn, { data?, id?, user?, env }?)`
+
+Starts a run of one function now. `fn` is a function from `createFunction`, or its
+ID. Gives back:
+
+```ts
+{ started: true, runId, eventId, existed?: true }      // existed: the same `id` started it before
+{ started: false, reason: "singleton", activeRunId }   // activeRunId: string, or null
+{ started: false, reason: "paused" | "not_found" }
+```
+
+It does not throw when the run did not start. It throws `start failed (<status>): <engine error>`
+on any other answer (for example `429` when the plan's events a second are used up).
+See [Start a run directly](flow-control.md#start-a-run-directly).
+
+## `flow.runs`
+
+| Method | Gives back |
+| --- | --- |
+| `list({ function?, status?, tags?, limit?, before?, env? }?)` | `{ items, next }`. Each item is `{ id, functionId, status, createdAt, endedAt, tags }`, newest first. Pass `next` as `before` for the next page. |
+| `counts({ function, env? })` | How many runs in each status, and `since` |
+| `singleton(fn, key, { env }?)` | `{ runId, status }` of the active run that holds that singleton key, or nulls |
+| `cancel({ runId } \| { function, singletonKey } \| { function, tag, status?, cursor? }, { env }?)` | `{ cancelled, notActive, more, next }` |
+
+- `function` is a function from `createFunction`, or its ID. `tags` needs `function`.
+- `list` and `counts` read an index that lags the runs by a few seconds. `singleton`,
+  and `cancel` by run ID or singleton key, do not.
+- A run that had ended goes in `notActive`: that is not an error. A cancel by `tag`
+  does up to 500 runs, oldest first; `more: true` means call again with `next` as
+  `cursor`.
+- Each throws `runs <method> failed (<status>): <engine error>` on an error answer.
+  The error has the HTTP status as `status`, as do the errors of `start`,
+  `flow.realtime` and `flow.streams`.
+- An empty `function`, `status` or `before` in `list` means no filter. In `cancel`, an
+  empty `status` list throws: leave it out instead.
+
+See the [HTTP API](http-api.md#get-v1runs-list-runs) for the statuses and every
+field.
+
 ## `flow.realtime`
 
 | Method | What it does |
 | --- | --- |
 | `publish({ channel, topic, data }, { env }?)` | Sends `data` to the browsers on that topic. Throws on failure. |
-| `token({ channel, topics }, { env }?)` | A token for one browser. Throws on failure. |
+| `publishMany([{ channel, topic, data }, ...], { env }?)` | Sends 1 to 100 messages in one call. One bad message fails them all. |
+| `token({ channel, topics }, { env }?)` | A token for one browser. Throws on failure. Pass `channels` (1 to 100, up to 8,000 characters of names in all) instead of `channel` for one socket on many channels. |
+| `subscribe({ channel or channels, topics, onMessage, onState?, WebSocket?, env? })` | Follows channels from a server. Gives back a function that stops it. |
+
+`subscribe` on the client makes its own token before every connect, and connects at
+`baseUrl`. Messages can be lost while it reconnects and at the 1-hour renewal: read
+what you missed from your own store. See
+[Subscribe from a server](realtime.md#subscribe-from-a-server).
 
 The browser side is `subscribe` from `@clevix/flow/realtime`, and `useRealtime` from
 `@clevix/flow/react`. See [Realtime](realtime.md).
+
+## `flow.streams`
+
+| Method | Gives back |
+| --- | --- |
+| `open(id, { meta?, ttl, env? })` | `{ created }`. `ttl` is a duration, 1 second to 7 days. |
+| `append(id, items, { env }?)` | The new items' offsets, as text |
+| `snapshot(id, { after?, env? }?)` | `{ meta, items, ended }` (every page), or `null` when the stream is gone |
+| `close(id, { end, grace, env? })` | `{ closed }`. `end` is the last item; `grace` is a duration, 0 to 7 days. |
+| `delete(id, { env }?)` | `{ deleted }` |
+| `token(id, { env }?)` | A token for one browser to read the stream with `readStream` |
+| `read(id, { after?, signal?, WebSocket?, env? }?)` | An async iterable of `{ offset, item, end? }`, until the end item |
+
+- `append` throws `StreamGoneError` (the stream does not exist) or `StreamClosedError`
+  (it is closed). `close` throws `StreamGoneError`. Both have `streamId`.
+- `read` connects again from the last offset after a drop, and throws
+  `StreamGoneError` when the stream is gone. It connects at `baseUrl`. If the token
+  call gets a `4xx` other than `408` and `429` (a bad key, say), it stops and throws
+  that error. Network errors, `5xx`, `408` and `429` are tried again.
+- `read` and `readStream` throw at once for an `after` that is not an offset (digits
+  only, up to 15).
+- A bad stream ID throws before any call.
+
+The browser side is `readStream` from `@clevix/flow/realtime`:
+`readStream({ refreshToken, after?, onItem, onEnd?, onGone?, onState?, WebSocket? })`
+gives back a function that stops it. See [Streams](streams.md).
 
 ## Errors
 
@@ -157,6 +234,8 @@ The browser side is `subscribe` from `@clevix/flow/realtime`, and `useRealtime` 
 | `NonRetriableError(message)` | Throw it to fail now, with no more tries. |
 | `RetryAfterError(message, at)` | Throw it to try again at `at`: a `Date`, ms, or a duration like `"30s"`. |
 | `StepError` | What a step call throws when the step failed for good. Has `name`, `message` and `stepId`. |
+| `StreamGoneError` | `flow.streams`: the stream does not exist. Has `streamId`. Also from `@clevix/flow/realtime`. |
+| `StreamClosedError` | `flow.streams.append`: the stream is closed. Has `streamId`. |
 
 See [Errors and retries](errors.md).
 
@@ -180,7 +259,7 @@ a `Flow` with another app ID.
 | `SDK_VERSION` | This SDK's version. |
 | `buildManifest`, `manifestHash` | Build the manifest and its hash, as sync sends them. |
 | `hashStepId(id, n)` | The hashed ID of a step ID for its `n`th use. |
-| Types | `FunctionOptions`, `Trigger`, `HandlerContext`, `StepTools`, `FlowFunction`, `FlowEvent`, `IncomingEvent`, `Json`, `RealtimeToken`, `RealtimeMessage`, and more. |
+| Types | `FunctionOptions`, `Trigger`, `HandlerContext`, `StepTools`, `FlowFunction`, `FlowEvent`, `IncomingEvent`, `Json`, `RealtimeToken`, `RealtimeMessage`, `StartResult`, `RunSummary`, `RunPage`, `RunCounts`, `RunStatus`, `CancelResult`, `StreamItem`, `StreamToken`, `StreamSnapshot`, and more. |
 
 Subpaths: `@clevix/flow/cloudflare`, `@clevix/flow/hono`, `@clevix/flow/next`,
 `@clevix/flow/express`, `@clevix/flow/realtime`, `@clevix/flow/react`.

@@ -88,6 +88,40 @@ progress: 100% Done
 - If `refreshToken` gives back something that is not a token, the client reports an
   `error` state and tries again later.
 
+## Subscribe from a server
+
+A server can follow channels too, for example to pass events between your own
+servers. `flow.realtime.subscribe` makes its own token (with the signing key) before
+every connect, so you need no token route:
+
+<<< @/../examples/ts/realtime/server-subscribe.ts#server-subscribe
+
+- It connects to the engine at `baseUrl` (`FLOW_BASE_URL`), not at the host in the
+  token's `url`, which can be wrong behind a proxy or in `wrangler dev`.
+- It needs a `WebSocket`: Node 22 and later have one. Elsewhere, pass one as
+  `WebSocket`.
+- It throws at once with no channel or no topic. It reconnects the same way as the
+  browser client, and stops when you call the function it gave back.
+- **Messages can be lost.** Nothing is stored, so a message sent while the socket
+  reconnects (1 s, then longer, up to 30 s), or at the 1-hour renewal, never arrives.
+  Use realtime as a hint, and read what you missed from your own store, for example
+  each time `onState` says `open`.
+
+## Many channels on one socket
+
+A token can be for 1 to 100 channels: pass `channels` instead of `channel` to
+`flow.realtime.token` or `flow.realtime.subscribe`. The topics apply to every
+channel, and each message still has its `channel`. A server that follows many
+channels then holds one socket, not one per channel. The browser `subscribe` takes
+such a token as it is.
+
+## Publish many at once
+
+`flow.realtime.publishMany` sends 1 to 100 messages in one call. The engine checks
+them all first: one bad message fails the call, and none is sent.
+
+<<< @/../examples/ts/realtime/server-subscribe.ts#publish-many
+
 ## What to expect
 
 - **Messages are hints.** A message goes only to browsers connected right now.
@@ -108,6 +142,8 @@ progress: 100% Done
 | What | Limit |
 | --- | --- |
 | One publish (the whole body) | 64 KB |
+| `publishMany` | 1 to 100 messages, the body up to 1 MB, each `data` up to 64 KB |
+| Channels per token | 1 to 100 (`channels`), up to 8,000 characters of names in all |
 | Channel name | 1-256 characters: letters, digits, `:` `_` `-` `.` |
 | Topic name | 1-64 characters: letters, digits, `_` `-` `.` |
 | Topics per token | 1 to 10 |

@@ -437,7 +437,9 @@ func TestCheckSyncWaitsWhileGuardIsOn(t *testing.T) {
 		_, _ = fmt.Fprintf(w, `{"appId":"billing","manifestHash":"v1:old","syncedAt":1,"retryAt":%s,"checkEveryMs":3600000}`, retryAt)
 	}, nil)
 	c := bootClient(t, e.URL)
-	if got, next := c.checkSync(context.Background()); got != bootWaiting || next <= 0 || next > time.Second {
+	// The wait is measured from the Date header, which has whole seconds only, so it
+	// can be up to a second longer than the 30 ms.
+	if got, next := c.checkSync(context.Background()); got != bootWaiting || next <= 0 || next > 2*time.Second {
 		t.Fatalf("got %s, next %s", got, next)
 	}
 	if got := e.methods(); len(got) != 1 {

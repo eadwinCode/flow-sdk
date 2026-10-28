@@ -14,7 +14,7 @@ import (
 )
 
 // Version is this SDK's version, sent in the manifest.
-const Version = "0.6.5"
+const Version = "0.7.0"
 
 // Event is an event to send with client.Send or step.Send.
 type Event = core.Event

@@ -198,7 +198,7 @@ export function serveApp(options: ServeOptions): ServedApp {
   const checkAgain = (env?: FlowEnv, ctx?: WaitUntil, timerFired = false): void => {
     if (nextDue === null || (!timerFired && Date.now() < nextDue)) return;
     nextDue = null;
-    clearTimeout(nextTimer);
+    if (nextTimer !== undefined) clearTimeout(nextTimer);
     nextTimer = undefined;
     check(env, ctx);
   };

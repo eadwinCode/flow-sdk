@@ -1,2 +1,2 @@
 /** Sent in the manifest as `sdk.version`. Keep in step with package.json. */
-export const SDK_VERSION = "0.6.5";
+export const SDK_VERSION = "0.7.0";

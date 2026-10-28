@@ -1,18 +1,18 @@
 package flow
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
 	"strings"
+	"unicode/utf16"
 )
 
 // Realtime sends small live messages from functions to browsers. A message goes
-// to the browsers connected right now; nothing is stored or replayed. Get it with
-// Client.Realtime.
+// to the browsers connected right now; nothing is stored or replayed. A server
+// can read them too, with Subscribe. Get it with Client.Realtime.
 //
 // A publish is a plain call, not a step: if the step around it is retried, the
 // message is sent again. Treat messages as hints (progress, logs), and keep
@@ -24,15 +24,26 @@ type Realtime struct {
 // Realtime returns the client's realtime API.
 func (c *Client) Realtime() Realtime { return Realtime{c: c} }
 
-// RealtimeToken lets one browser connect to one channel and read the listed
-// topics. Hand it to the browser as JSON; the TypeScript client reads it.
+// RealtimeToken lets one browser (or server) connect to one channel, or to a
+// list of channels, and read the listed topics. Hand it to the browser as
+// JSON; the TypeScript client reads it.
 type RealtimeToken struct {
-	Token   string   `json:"token"`
-	URL     string   `json:"url"`
-	Channel string   `json:"channel"`
-	Topics  []string `json:"topics"`
+	Token string `json:"token"`
+	URL   string `json:"url"`
+	// Channel is set for a token made by Token.
+	Channel string `json:"channel,omitempty"`
+	// Channels is set for a token made by TokenMany.
+	Channels []string `json:"channels,omitempty"`
+	Topics   []string `json:"topics"`
 	// ExpiresAt is the connect deadline (ms since epoch), about a minute away.
 	ExpiresAt int64 `json:"expiresAt"`
+}
+
+// RealtimeOut is one message for PublishMany.
+type RealtimeOut struct {
+	Channel string `json:"channel"`
+	Topic   string `json:"topic"`
+	Data    any    `json:"data"`
 }
 
 // Publish sends data (any JSON value, up to about 64 KB) to the browsers
@@ -40,14 +51,18 @@ type RealtimeToken struct {
 // should not fail a run.
 func (r Realtime) Publish(ctx context.Context, channel, topic string, data any) error {
 	body := map[string]any{"appId": r.c.appID, "channel": channel, "topic": topic, "data": data}
-	status, b, err := r.c.postSigned(ctx, "/v1/realtime/publish", body)
-	if err != nil {
-		return fmt.Errorf("flow: realtime publish: %w", err)
+	return r.c.callSigned(ctx, "realtime publish", http.MethodPost, "/v1/realtime/publish", body, nil)
+}
+
+// PublishMany sends 1 to 100 messages in one call. Each message's data is up
+// to about 64 KB, and the whole call up to 1 MB. The engine checks them all
+// first: if one is bad, none is sent.
+func (r Realtime) PublishMany(ctx context.Context, messages []RealtimeOut) error {
+	if len(messages) == 0 || len(messages) > 100 {
+		return fmt.Errorf("flow: PublishMany takes 1 to 100 messages, not %d", len(messages))
 	}
-	if status/100 != 2 {
-		return fmt.Errorf("flow: realtime publish failed (%d): %s", status, engineError(b))
-	}
-	return nil
+	body := map[string]any{"appId": r.c.appID, "messages": messages}
+	return r.c.callSigned(ctx, "realtime publish", http.MethodPost, "/v1/realtime/publish", body, nil)
 }
 
 // Token makes a subscription token for channel and topics (1 to 10). Call it in
@@ -57,60 +72,43 @@ func (r Realtime) Token(ctx context.Context, channel string, topics ...string) (
 		return RealtimeToken{}, errors.New("flow: realtime token needs at least one topic")
 	}
 	body := map[string]any{"appId": r.c.appID, "channel": channel, "topics": topics}
-	status, b, err := r.c.postSigned(ctx, "/v1/realtime/token", body)
-	if err != nil {
-		return RealtimeToken{}, fmt.Errorf("flow: realtime token: %w", err)
-	}
-	if status != http.StatusOK {
-		return RealtimeToken{}, fmt.Errorf("flow: realtime token failed (%d): %s", status, engineError(b))
-	}
 	var tok RealtimeToken
-	if err := json.Unmarshal(b, &tok); err != nil {
-		return RealtimeToken{}, fmt.Errorf("flow: cannot read the engine's answer: %w", err)
-	}
-	return tok, nil
+	err := r.c.callSigned(ctx, "realtime token", http.MethodPost, "/v1/realtime/token", body, &tok)
+	return tok, err
 }
 
-// postSigned POSTs JSON to the engine with the signing key as bearer. On a 401 it
-// tries the fallback key, so it keeps working while the key is rotated.
-func (c *Client) postSigned(ctx context.Context, path string, payload any) (int, []byte, error) {
-	body, err := json.Marshal(payload)
-	if err != nil {
-		return 0, nil, err
+// TokenMany makes one token for 1 to 100 channels, with at most 8,000
+// characters of names in all (so the token fits in a connect URL). The topics
+// apply to every channel. One socket then gets the messages of all of them.
+func (r Realtime) TokenMany(ctx context.Context, channels []string, topics ...string) (RealtimeToken, error) {
+	if err := checkChannels(channels); err != nil {
+		return RealtimeToken{}, err
 	}
-	keys := []string{}
-	for _, k := range []string{c.signingKey, c.fallbackKey} {
-		if k != "" {
-			keys = append(keys, k)
-		}
+	if len(topics) == 0 {
+		return RealtimeToken{}, errors.New("flow: realtime token needs at least one topic")
 	}
-	if len(keys) == 0 {
-		keys = append(keys, "") // dev: no key; the engine answers 401
+	body := map[string]any{"appId": r.c.appID, "channels": channels, "topics": topics}
+	var tok RealtimeToken
+	err := r.c.callSigned(ctx, "realtime token", http.MethodPost, "/v1/realtime/token", body, &tok)
+	return tok, err
+}
+
+// checkChannels checks a list of channels for one token: 1 to 100 names, and
+// at most 8,000 characters in all, counted as the engine does (UTF-16).
+func checkChannels(channels []string) error {
+	if len(channels) == 0 || len(channels) > 100 {
+		return fmt.Errorf("flow: a token takes 1 to 100 channels, not %d", len(channels))
 	}
-	var status int
-	var b []byte
-	for i, k := range keys {
-		req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+path, bytes.NewReader(body))
-		if err != nil {
-			return 0, nil, err
-		}
-		req.Header.Set("Content-Type", "application/json")
-		if k != "" {
-			bearer, err := signingKeyBearer(k)
-			if err != nil {
-				return 0, nil, err
-			}
-			req.Header.Set("Authorization", "Bearer "+bearer)
-		}
-		status, b, err = c.do(req)
-		if err != nil {
-			return 0, nil, err
-		}
-		if status != http.StatusUnauthorized || i == len(keys)-1 {
-			break
+	n := 0
+	for _, ch := range channels {
+		for _, r := range ch {
+			n += utf16.RuneLen(r)
 		}
 	}
-	return status, b, nil
+	if n > 8000 {
+		return fmt.Errorf("flow: the channel names have %d characters in all; at most 8000", n)
+	}
+	return nil
 }
 
 // engineError is the "error" field of an engine answer, or the body as text.

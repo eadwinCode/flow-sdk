@@ -97,6 +97,7 @@ event's `data` has:
 | `run_id` | The failed run |
 | `error` | `name`, `message` and `stack` |
 | `event` | The event that started the failed run |
+| `attempts` | How many times the call that failed the run was tried. A `NonRetriableError` in a step gives `1`. `0` when the run failed with no failed try, for example when its state grew too large. In TypeScript, `onFailure` also gets it as `attempts`. |
 
 Go has no `onFailure` option: make that second function yourself, as above. On a local
 engine, the empty file failed `import-users` at once, and the handler posted
@@ -105,8 +106,9 @@ engine, the empty file failed `import-users` at once, and the handler posted
 - It runs only when a run ends **Failed**, never when it is **Cancelled**. Runs
   started by `step.invoke` count too.
 - To act on a cancelled run, trigger a function on `inngest/function.cancelled`, the
-  same way. Its `data` has the same fields; `error` is there when the cancel had a
-  reason.
+  same way. Its `data` has the same fields but `attempts`; `error` is there when the
+  cancel had a reason. A run that passes `timeouts.finish` is cancelled, so it sends
+  this event, not the failed one.
 - A run started by one of these two events sends neither, so a handler that fails
   can not start itself again.
 

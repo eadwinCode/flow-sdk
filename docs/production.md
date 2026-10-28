@@ -180,6 +180,7 @@ are kept 4 days.
 | `400 app url must be https` | The `PUT` came in over `http`. Send it to the public `https` URL. Behind a proxy the app may see itself as `http`: add the app by URL in the dashboard, and the engine keeps that URL. |
 | `400 function <id>: ...` | A bad option, cron or expression in that function. The message says which. |
 | `409 ManifestReplaced` | A newer version of the app synced, and copies of it still run. See "Rolling deploys" above. |
+| `409 FunctionIdClash` | Another app already has a function with the same full ID (`<appId>-<function id>`): app `a` with function `b-c` and app `a-b` with function `c` are both `a-b-c`. Rename one of the two functions. |
 | `502 SyncFailed` (TypeScript) / `500 SyncFailed` (Go) | The app could not reach the engine. If you run your own engine, check `FLOW_BASE_URL`. |
 
 **Add app or Change URL is refused**

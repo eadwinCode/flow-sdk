@@ -14,6 +14,9 @@ import (
 // idRE is the rule for app and function IDs.
 var idRE = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$`)
 
+// tagNameRE is the rule for run tag names.
+var tagNameRE = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_]{0,31}$`)
+
 // Trigger starts a function: an event (with an optional "if" expression) or a
 // cron schedule. Make one with EventTrigger or CronTrigger.
 type Trigger struct {
@@ -130,24 +133,32 @@ type FunctionOpts struct {
 	// Idempotency is an expression over event; one run per value.
 	Idempotency *string
 	Singleton   *Singleton
+	// Tags names up to 3 values of a run, each an expression over event, for
+	// example {"agentRun": "event.data.job.runId"}. The engine works them out
+	// once, when the run starts, and Runs().List and Runs().Cancel can find
+	// runs by them. A name is a letter, then letters, digits or _, up to 32.
+	// A value that is not a string, number or boolean, or is over 256
+	// characters, is left out.
+	Tags map[string]string
 }
 
 // FunctionConfig is one function in the manifest, with Inngest's key names.
 type FunctionConfig struct {
-	ID          string           `json:"id"`
-	Name        string           `json:"name,omitempty"`
-	Triggers    []Trigger        `json:"triggers"`
-	Retries     *int             `json:"retries,omitempty"`
-	Timeouts    *timeoutsJSON    `json:"timeouts,omitempty"`
-	CancelOn    []cancelOnJSON   `json:"cancelOn,omitempty"`
-	Concurrency []Concurrency    `json:"concurrency,omitempty"`
-	Throttle    *throttleJSON    `json:"throttle,omitempty"`
-	RateLimit   *rateLimitJSON   `json:"rateLimit,omitempty"`
-	Debounce    *debounceJSON    `json:"debounce,omitempty"`
-	BatchEvents *batchEventsJSON `json:"batchEvents,omitempty"`
-	Priority    *Priority        `json:"priority,omitempty"`
-	Idempotency *string          `json:"idempotency,omitempty"`
-	Singleton   *Singleton       `json:"singleton,omitempty"`
+	ID          string            `json:"id"`
+	Name        string            `json:"name,omitempty"`
+	Triggers    []Trigger         `json:"triggers"`
+	Retries     *int              `json:"retries,omitempty"`
+	Timeouts    *timeoutsJSON     `json:"timeouts,omitempty"`
+	CancelOn    []cancelOnJSON    `json:"cancelOn,omitempty"`
+	Concurrency []Concurrency     `json:"concurrency,omitempty"`
+	Throttle    *throttleJSON     `json:"throttle,omitempty"`
+	RateLimit   *rateLimitJSON    `json:"rateLimit,omitempty"`
+	Debounce    *debounceJSON     `json:"debounce,omitempty"`
+	BatchEvents *batchEventsJSON  `json:"batchEvents,omitempty"`
+	Priority    *Priority         `json:"priority,omitempty"`
+	Idempotency *string           `json:"idempotency,omitempty"`
+	Singleton   *Singleton        `json:"singleton,omitempty"`
+	Tags        map[string]string `json:"tags,omitempty"`
 }
 
 type timeoutsJSON struct {
@@ -198,6 +209,7 @@ func buildConfig(opts FunctionOpts, triggers []Trigger) FunctionConfig {
 		Priority:    opts.Priority,
 		Idempotency: opts.Idempotency,
 		Singleton:   opts.Singleton,
+		Tags:        opts.Tags,
 	}
 	if opts.Timeouts != nil {
 		c.Timeouts = &timeoutsJSON{
@@ -280,12 +292,28 @@ func (f *function) call(ctx context.Context, req *core.InvokeRequest) (any, erro
 	return f.run(ctx, req)
 }
 
+// FailedEventData is the data of an inngest/function.failed event. Use it as
+// the T of a failure function (see CreateFunction).
+type FailedEventData struct {
+	// FunctionID is the failed function's full ID, "<appId>-<id>".
+	FunctionID string `json:"function_id"`
+	RunID      string `json:"run_id"`
+	// Error is why the run failed.
+	Error *StepError `json:"error"`
+	// Event is the failed run's trigger event, as JSON.
+	Event json.RawMessage `json:"event"`
+	// Attempts is how many times the step that failed the run was tried. It
+	// is 0 when no step try failed it (for example a finish timeout).
+	Attempts int `json:"attempts"`
+}
+
 // CreateFunction defines a function and adds it to the client.
 //
 // For failure handling (onFailure in TypeScript), create a second function
-// with trigger EventTrigger("inngest/function.failed",
+// of type FailedEventData with trigger EventTrigger("inngest/function.failed",
 // StrPtr("event.data.function_id == '<appId>-<id>'")). Its event data holds
-// function_id, run_id, error and event (the original trigger event).
+// function_id, run_id, error, event (the original trigger event) and
+// attempts (how many times the failed step was tried).
 func CreateFunction[T any](c *Client, opts FunctionOpts, trigger Triggerable, handler Handler[T]) (ServableFunction, error) {
 	if c == nil {
 		return nil, errors.New("flow: CreateFunction needs a client")
@@ -298,6 +326,17 @@ func CreateFunction[T any](c *Client, opts FunctionOpts, trigger Triggerable, ha
 	}
 	if handler == nil {
 		return nil, fmt.Errorf("flow: function %s needs a handler", opts.ID)
+	}
+	if len(opts.Tags) > 3 {
+		return nil, fmt.Errorf("flow: function %s has %d tags; at most 3", opts.ID, len(opts.Tags))
+	}
+	for name, expr := range opts.Tags {
+		if !tagNameRE.MatchString(name) {
+			return nil, fmt.Errorf("flow: function %s: invalid tag name %q (a letter, then letters, digits and _, up to 32)", opts.ID, name)
+		}
+		if expr == "" {
+			return nil, fmt.Errorf("flow: function %s: tag %s needs an expression", opts.ID, name)
+		}
 	}
 	fn := &function{appID: c.appID, config: buildConfig(opts, trigger.triggers())}
 	fn.run = func(ctx context.Context, req *core.InvokeRequest) (any, error) {

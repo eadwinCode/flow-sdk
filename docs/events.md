@@ -114,6 +114,9 @@ starts them at that time.
 <<< @/../examples/go/events/main.go#later [Go]
 :::
 
+There is no upper limit on `ts`. [Singleton](flow-control.md#singleton) and
+[throttle](flow-control.md#throttle) are applied when the event arrives, not at `ts`.
+
 This does not work for functions with [debounce](flow-control.md#debounce) or
 [batching](flow-control.md#batching). See [Crons and scheduled jobs](crons.md) for all
 the ways to wait.

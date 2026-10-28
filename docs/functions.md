@@ -101,7 +101,17 @@ answer). Make it safe to repeat. See
 <<< @/../examples/go/steps/main.go#sleep [Go]
 :::
 
-Nothing runs while the run sleeps. A time in the past does not wait.
+Nothing runs while the run sleeps. A time in the past does not wait: the step ends
+at once.
+
+A sleep has no upper limit: days, weeks or a year are fine. A sleeping run is never
+deleted while it sleeps; only ended runs are deleted (see
+[Limits](limits.md#keeping-data)). Two things to know for long sleeps:
+
+- A [`cancelOn`](#cancel-a-run-with-an-event) with no `timeout` listens for at most
+  366 days. A run that sleeps longer stops hearing its cancel events after that.
+- `timeouts.finish` counts from the run's first call to your app, so time asleep
+  counts toward it.
 
 ### `waitForEvent`: wait for something to happen
 
@@ -243,3 +253,22 @@ async.data.orderId == event.data.orderId
 | `priority` | `Priority` | [Some runs first](flow-control.md#priority). |
 | `idempotency` | `Idempotency` | [One run per key](flow-control.md#idempotency). |
 | `singleton` | `Singleton` | [One run at a time per key](flow-control.md#singleton). |
+| `tags` | `Tags` | [Names to find runs by](#tags). |
+
+## Tags
+
+Tags let you find a function's runs by a value from their event, for example a job
+or order ID. Then you can list, count and cancel those runs from your app.
+
+<<< @/../examples/ts/runs.ts#tags
+
+- Up to 3 tags. A name is a letter, then letters, digits and `_`, up to 32. The SDK
+  throws at `createFunction` for more tags or a bad name.
+- A value is an [expression](#expressions) over `event`. It is worked out once, when
+  the run starts, over its first event. Text stays as it is; a number or a boolean
+  becomes text. Anything else (no value, `null`, an object, a list, an error) leaves
+  the tag out. So does a value over 256 characters.
+- Find runs with a tag: `flow.runs.list({ function, tags })`. Cancel them:
+  `flow.runs.cancel({ function, tag })`. See the
+  [TypeScript reference](typescript.md#flowruns) and the
+  [HTTP API](http-api.md#get-v1runs-list-runs).

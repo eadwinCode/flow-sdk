@@ -76,7 +76,8 @@ none are lost.
 - Throttle acts when a run **starts**. After that, its steps are not slowed. To limit
   work in progress, use `concurrency`.
 - `limit` 1 to 100,000; `period` 1 second to 7 days.
-- Applies to runs from events and cron. Not to `step.invoke`.
+- Applies to runs from events, cron and [`flow.start`](#start-a-run-directly). Not to
+  `step.invoke`.
 
 ## Rate limit
 
@@ -192,7 +193,25 @@ Only one active run at a time, in all or per key.
   "only the newest request matters".
 - A run is active until it ends (completed, failed, cancelled), also while it sleeps
   or waits.
-- Applies to runs from events and cron. Not to `step.invoke`.
+- Applies to runs from events, cron and [`flow.start`](#start-a-run-directly). Not to
+  `step.invoke`.
+- To learn which run holds a key, use `flow.runs.singleton(fn, key)`. To cancel it,
+  `flow.runs.cancel({ function, singletonKey })`. Both read the singleton itself, with
+  no lag.
+
+## Start a run directly
+
+`flow.send` answers as soon as the engine has the event; the singleton check comes
+later. `flow.start` starts a run of one function at once, and tells you if it did not
+start, for example because a singleton run holds the key:
+
+<<< @/../examples/ts/runs.ts#start
+
+- Singleton, throttle, concurrency and priority apply, as for an event.
+- Rate limit, debounce and batching do not: they are about streams of events.
+- `idempotency` does not apply either. Pass `id` instead: a retry with the same `id`
+  lands on the same run, and answers `existed: true`.
+- The run exists when `start` answers, so a cancel sent right after it cannot miss.
 
 ## How they work together
 
@@ -208,11 +227,11 @@ For each event and each matching function, the engine goes in this order:
 
 You can combine any of them, except `debounce` with `batchEvents`.
 
-| | Event | Cron | `step.invoke` child |
-| --- | --- | --- | --- |
-| `concurrency`, `priority` | yes | yes | yes |
-| `throttle`, `singleton` | yes | yes | no |
-| `rateLimit`, `debounce`, `batchEvents`, `idempotency` | yes | no | no |
+| | Event | Cron | `flow.start` | `step.invoke` child |
+| --- | --- | --- | --- | --- |
+| `concurrency`, `priority` | yes | yes | yes | yes |
+| `throttle`, `singleton` | yes | yes | yes | no |
+| `rateLimit`, `debounce`, `batchEvents`, `idempotency` | yes | no | no | no |
 
 Runs keep the flow control they started with. If you change these options and sync,
 only new runs use the new values.
