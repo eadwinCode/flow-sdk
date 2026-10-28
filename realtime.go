@@ -68,6 +68,9 @@ func (r Realtime) PublishMany(ctx context.Context, messages []RealtimeOut) error
 // Token makes a subscription token for channel and topics (1 to 10). Call it in
 // your own HTTP handler, after you checked that the user may see that channel.
 func (r Realtime) Token(ctx context.Context, channel string, topics ...string) (RealtimeToken, error) {
+	if channel == "" {
+		return RealtimeToken{}, errors.New("flow: realtime token needs a channel")
+	}
 	if len(topics) == 0 {
 		return RealtimeToken{}, errors.New("flow: realtime token needs at least one topic")
 	}

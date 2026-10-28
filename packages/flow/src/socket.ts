@@ -14,6 +14,8 @@ export const CLOSE_ENDED = 4100;
 const PING_MS = 30_000;
 const MIN_BACKOFF_MS = 1_000;
 const MAX_BACKOFF_MS = 30_000;
+/** A socket open this long when it closes counts as a good one: the backoff starts again. */
+const MIN_STABLE_MS = 10_000;
 
 /** What to do after a socket closed: connect again at once, after a backoff, or stop. */
 type Next = "now" | "later" | "stop";
@@ -23,16 +25,16 @@ const OPEN = 1;
 
 /**
  * The part of a WebSocket the loop uses. Its own type, so the SDK type-checks with the
- * DOM's WebSocket and with the Workers one, which has no `onopen` and the like.
+ * DOM's WebSocket and with the Workers one. Events go through addEventListener: Workers
+ * fire them only that way, and browsers and Node do too.
  */
 interface LoopSocket {
   readonly readyState: number;
   send(data: string): void;
   close(code?: number, reason?: string): void;
-  onopen: (() => void) | null;
-  onmessage: ((event: { data: unknown }) => void) | null;
-  onclose: ((event: { code: number }) => void) | null;
-  onerror: (() => void) | null;
+  addEventListener(type: "open" | "error", listener: () => void): void;
+  addEventListener(type: "message", listener: (event: { data: unknown }) => void): void;
+  addEventListener(type: "close", listener: (event: { code: number }) => void): void;
 }
 
 interface LoopOptions {
@@ -115,9 +117,13 @@ export function socketLoop(options: LoopOptions): () => void {
     // Acts on this socket's close once: on a `closing` frame, or on the close event,
     // which some clients (Node's) report seconds late.
     let closedDone = false;
+    let openedAt: number | undefined;
     const closed = (code: number) => {
       if (closedDone) return;
       closedDone = true;
+      // Only a socket that stayed open a while resets the backoff. One the engine
+      // takes and then closes at once counts as a failure, so the waits still grow.
+      if (openedAt !== undefined && Date.now() - openedAt >= MIN_STABLE_MS) failures = 0;
       if (ping !== undefined) clearInterval(ping);
       if (ws === socket) ws = null;
       if (stopped) return;
@@ -125,23 +131,26 @@ export function socketLoop(options: LoopOptions): () => void {
       // The socket's life ended: a new token, right away. Anything else: back off.
       later(options.afterClose?.(code) ?? (code === CLOSE_EXPIRED ? "now" : "later"));
     };
-    socket.onopen = () => {
-      failures = 0;
+    socket.addEventListener("open", () => {
+      openedAt = Date.now();
       setState("open");
       ping = setInterval(() => {
         if (socket.readyState === OPEN) socket.send("ping");
       }, PING_MS);
-    };
-    socket.onmessage = (event) => {
+    });
+    socket.addEventListener("message", (event) => {
       if (stopped || closedDone || event.data === "pong" || typeof event.data !== "string") return;
       const closing = options.onText(event.data);
       if (typeof closing === "number") {
         socket.close(1000, "closing");
         closed(closing);
       }
-    };
-    socket.onclose = (event) => closed(event.code);
-    socket.onerror = () => setState("error", new Error(`${options.label} socket error`));
+    });
+    socket.addEventListener("close", (event) => closed(event.code));
+    socket.addEventListener("error", () => {
+      // A late error from a socket already handled says nothing new.
+      if (!closedDone) setState("error", new Error(`${options.label} socket error`));
+    });
   };
 
   void open();

@@ -474,3 +474,38 @@ func TestStreamsReadClosingFrame(t *testing.T) {
 		}
 	}
 }
+
+func TestStreamsReadBackoffGrowsWhenSocketsCloseAtOnce(t *testing.T) {
+	shortSocketWaits(t, time.Hour, 40*time.Millisecond)
+	e := newWSEngine(t, func(n int, conn *websocket.Conn) {
+		if n <= 4 {
+			_ = conn.Close(websocket.StatusInternalError, "")
+			return
+		}
+		sendText(t, conn, item("1", true))
+		_ = conn.Close(websocket.StatusNormalClosure, "")
+	})
+	c := newClient(t, ClientOpts{BaseURL: StrPtr(e.srv.URL)})
+	items, errs := readAll(context.Background(), c, "", 0)
+	if offsets(items) != "1!" || len(errs) != 0 {
+		t.Fatalf("items = %s, errs = %v", offsets(items), errs)
+	}
+	gapsGrow(t, e.dialed(), 40*time.Millisecond)
+}
+
+// break returns at once, even when the engine never answers the close.
+func TestStreamsReadBreakIsFast(t *testing.T) {
+	hold := make(chan struct{})
+	e := newWSEngine(t, func(n int, conn *websocket.Conn) {
+		sendText(t, conn, item("1", false))
+		sendText(t, conn, item("2", false))
+		<-hold // no read: the close is never answered
+	})
+	t.Cleanup(func() { close(hold) })
+	c := newClient(t, ClientOpts{BaseURL: StrPtr(e.srv.URL)})
+	start := time.Now()
+	items, _ := readAll(context.Background(), c, "", 1)
+	if took := time.Since(start); took > time.Second || offsets(items) != "1" {
+		t.Fatalf("break took %v, items = %s", took, offsets(items))
+	}
+}

@@ -359,6 +359,7 @@ func TestSubscribeBadOptions(t *testing.T) {
 		{Channel: "a", Channels: []string{"b"}, Topics: []string{"t"}, OnMessage: on},
 		{Channel: "a", OnMessage: on},
 		{Channel: "a", Topics: []string{"t"}},
+		{Channel: "", Topics: []string{"t"}, OnMessage: on},
 		{Channels: make([]string, 101), Topics: []string{"t"}, OnMessage: on},
 	} {
 		if _, err := c.Realtime().Subscribe(context.Background(), o); err == nil {
@@ -383,6 +384,50 @@ func TestSocketURL(t *testing.T) {
 	if _, err := c.socketURL("", nil); err == nil {
 		t.Fatal("no path: want an error")
 	}
+}
+
+// gapsGrow checks that the waits between the first sockets grow: a socket
+// that opens and closes at once is a failed try.
+func gapsGrow(t *testing.T, dialed []wsDialed, minWait time.Duration) {
+	t.Helper()
+	if len(dialed) < 5 {
+		t.Fatalf("sockets = %d, want 5", len(dialed))
+	}
+	for i := range 4 {
+		gap := dialed[i+1].at.Sub(dialed[i].at)
+		if want := (minWait << i) / 2; gap < want {
+			t.Fatalf("wait %d = %v, want at least %v", i, gap, want)
+		}
+	}
+}
+
+func TestSubscribeBackoffGrowsWhenSocketsCloseAtOnce(t *testing.T) {
+	shortSocketWaits(t, time.Hour, 40*time.Millisecond)
+	e := newWSEngine(t, func(n int, conn *websocket.Conn) {
+		if n <= 4 {
+			_ = conn.Close(websocket.StatusInternalError, "")
+			return
+		}
+		readUntilClose(conn)
+	})
+	c := newClient(t, ClientOpts{BaseURL: StrPtr(e.srv.URL)})
+	opened := make(chan struct{}, 10)
+	stop, err := c.Realtime().Subscribe(context.Background(), SubscribeOpts{
+		Channel: "c", Topics: []string{"t"}, OnMessage: func(RealtimeMessage) {},
+		OnState: func(s RealtimeState, err error) {
+			if s == RealtimeOpen {
+				opened <- struct{}{}
+			}
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stop()
+	for range 5 {
+		recv(t, opened)
+	}
+	gapsGrow(t, e.dialed(), 40*time.Millisecond)
 }
 
 func TestBackoff(t *testing.T) {

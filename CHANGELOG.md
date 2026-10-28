@@ -32,6 +32,10 @@ an older engine they fail with `404`.
 - **Many channels on one socket.** `flow.realtime.token` and `subscribe` take
   `channels` (1 to 100) instead of `channel`. Go: `Realtime().TokenMany` and
   `SubscribeOpts.Channels`. `RealtimeToken` has an optional `channels`.
+- **Type change: `RealtimeToken.channel` is now optional** (`channel?: string`), since
+  a token for many channels has `channels` instead. TypeScript code that reads
+  `token.channel` as a `string` no longer type-checks: use `token.channel ?? ""`, or
+  check it first.
 - **Publish many at once.** TypeScript `flow.realtime.publishMany(messages)`, Go
   `Realtime().PublishMany(ctx, []flow.RealtimeOut{...})`: 1 to 100 messages in one
   call, all or none.

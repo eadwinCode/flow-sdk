@@ -35,12 +35,15 @@ export class FakeSocket {
   readyState = 0;
   sent: string[] = [];
   closedWith: number | null = null;
-  onopen: (() => void) | null = null;
-  onmessage: ((e: { data: unknown }) => void) | null = null;
-  onclose: ((e: { code: number }) => void) | null = null;
-  onerror: (() => void) | null = null;
+  private listeners: Record<string, Array<(e: unknown) => void>> = {};
   constructor(readonly url: string) {
     FakeSocket.all.push(this);
+  }
+  addEventListener(type: string, listener: (e: unknown) => void) {
+    (this.listeners[type] ??= []).push(listener);
+  }
+  private fire(type: string, event: unknown = {}) {
+    for (const listener of this.listeners[type] ?? []) listener(event);
   }
   send(data: string) {
     this.sent.push(data);
@@ -51,14 +54,17 @@ export class FakeSocket {
   // driven by the test
   open() {
     this.readyState = 1;
-    this.onopen?.();
+    this.fire("open");
   }
   receive(data: unknown) {
-    this.onmessage?.({ data: typeof data === "string" ? data : JSON.stringify(data) });
+    this.fire("message", { data: typeof data === "string" ? data : JSON.stringify(data) });
   }
   drop(code: number) {
     this.readyState = 3;
-    this.onclose?.({ code });
+    this.fire("close", { code });
+  }
+  error() {
+    this.fire("error");
   }
 }
 

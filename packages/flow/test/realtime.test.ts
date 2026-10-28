@@ -267,6 +267,49 @@ describe("subscribe (browser)", () => {
     expect(refreshToken).toHaveBeenCalledTimes(2);
   });
 
+  it("backs off more each time a socket opens and closes at once", async () => {
+    vi.useFakeTimers();
+    vi.spyOn(Math, "random").mockReturnValue(0); // each wait is half its base
+    const { refreshToken } = start();
+    await vi.advanceTimersByTimeAsync(0);
+    for (const [i, wait] of [500, 1_000, 2_000, 4_000].entries()) {
+      const ws = FakeSocket.all[i]!;
+      ws.open();
+      ws.drop(1006);
+      await vi.advanceTimersByTimeAsync(wait - 1);
+      expect(refreshToken).toHaveBeenCalledTimes(i + 1);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(refreshToken).toHaveBeenCalledTimes(i + 2);
+    }
+    vi.restoreAllMocks();
+  });
+
+  it("starts the backoff again after a socket stayed open 10 s", async () => {
+    vi.useFakeTimers();
+    vi.spyOn(Math, "random").mockReturnValue(0);
+    const { refreshToken } = start();
+    await vi.advanceTimersByTimeAsync(0);
+    FakeSocket.all[0]!.drop(1006); // a failure: the next wait is 1 s
+    await vi.advanceTimersByTimeAsync(500);
+    FakeSocket.all[1]!.open();
+    await vi.advanceTimersByTimeAsync(10_000);
+    FakeSocket.all[1]!.drop(1006);
+    await vi.advanceTimersByTimeAsync(500);
+    expect(refreshToken).toHaveBeenCalledTimes(3);
+    vi.restoreAllMocks();
+  });
+
+  it("a late error event from a closed socket changes no state", async () => {
+    const { states } = start();
+    await flushPromises();
+    const ws = FakeSocket.all[0]!;
+    ws.open();
+    ws.error();
+    ws.drop(1006);
+    ws.error();
+    expect(states).toEqual(["connecting", "open", "error", "closed"]);
+  });
+
   it("pings every 30 s while open", async () => {
     vi.useFakeTimers();
     start();

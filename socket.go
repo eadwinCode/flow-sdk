@@ -25,6 +25,10 @@ const (
 	closeEnded websocket.StatusCode = 4100
 	// socketReadLimit is the largest frame we take. A message is up to 64 KB.
 	socketReadLimit = 1 << 20
+	// minStable is how long a socket must have been open, when it closes, to
+	// start the wait between tries again from 1s. A socket that opens and
+	// closes at once counts as a failed try, so the wait grows.
+	minStable = 10 * time.Second
 )
 
 // These are vars so tests can make them short.
@@ -44,6 +48,14 @@ func backoff(failures int) time.Duration {
 		}
 	}
 	return time.Duration(float64(d) * (0.5 + rand.Float64()/2))
+}
+
+// resetIfStable sets failures to 0 when the socket, opened at opened, was
+// open for at least minStable.
+func resetIfStable(failures *int, opened time.Time) {
+	if time.Since(opened) >= minStable {
+		*failures = 0
+	}
 }
 
 // sleepCtx waits d, or until ctx ends. It reports whether the wait ran out.
@@ -92,7 +104,8 @@ func (c *Client) socketURL(tokenURL string, q url.Values) (string, error) {
 // pingEvery, and when ctx ends it closes the socket with code 1000 and
 // reason. Read from the socket with a context that does not end (for
 // example context.WithoutCancel(ctx)): ctx ending closes it already. Call the
-// returned func when done with the socket.
+// returned func when done with the socket: it sends a 1000 close, but does
+// not wait for the engine's answer, so it returns at once.
 func (c *Client) dialSocket(ctx context.Context, u, reason string) (*websocket.Conn, func(), error) {
 	conn, _, err := websocket.Dial(ctx, u, &websocket.DialOptions{HTTPClient: c.http})
 	if err != nil {
@@ -122,7 +135,8 @@ func (c *Client) dialSocket(ctx context.Context, u, reason string) (*websocket.C
 	done := func() {
 		stopClose()
 		stopPing()
-		_ = conn.CloseNow()
+		// Close waits for the engine's answer (up to 5s): not here.
+		go func() { _ = conn.Close(websocket.StatusNormalClosure, reason) }()
 	}
 	return conn, done, nil
 }

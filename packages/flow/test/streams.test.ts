@@ -535,6 +535,18 @@ describe("readStream (browser)", () => {
     expect(b.refreshToken).toHaveBeenCalledTimes(1);
   });
 
+  it("a late error event after a closing frame changes no state", async () => {
+    const { states, onEnd } = start();
+    await flushPromises();
+    const ws = FakeSocket.all[0]!;
+    ws.open();
+    ws.receive({ closing: CLOSE_ENDED });
+    ws.error();
+    ws.drop(1006);
+    expect(onEnd).toHaveBeenCalledTimes(1);
+    expect(states).toEqual(["connecting", "open", "closed"]);
+  });
+
   it("calls onGone on 4404 and does not connect again", async () => {
     const { onGone, refreshToken } = start();
     await flushPromises();

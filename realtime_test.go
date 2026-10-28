@@ -78,6 +78,12 @@ func TestRealtimeToken(t *testing.T) {
 	if _, err := c.Realtime().Token(context.Background(), "c"); err == nil {
 		t.Fatal("no topics: want an error")
 	}
+	if _, err := c.Realtime().Token(context.Background(), "", "a"); err == nil {
+		t.Fatal("no channel: want an error")
+	}
+	if len(*calls) != 1 {
+		t.Fatalf("calls = %d, want 1", len(*calls))
+	}
 }
 
 func TestRealtimeTriesFallbackKeyOn401(t *testing.T) {

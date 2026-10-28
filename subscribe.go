@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"time"
 
 	"github.com/coder/websocket"
 )
@@ -162,7 +163,7 @@ func (s *subscription) connect(failures *int) (websocket.StatusCode, error) {
 		return -1, fmt.Errorf("flow: realtime connect: %w", err)
 	}
 	defer done()
-	*failures = 0
+	defer resetIfStable(failures, time.Now())
 	s.state(RealtimeOpen, nil)
 	readCtx := context.WithoutCancel(s.ctx)
 	for {

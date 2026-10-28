@@ -286,7 +286,7 @@ func (s Streams) readOnce(ctx context.Context, id string, after *string, failure
 		return -1, false
 	}
 	defer done()
-	*failures = 0
+	defer resetIfStable(failures, time.Now())
 	// closed acts on the socket's close code.
 	closed := func(code websocket.StatusCode) (websocket.StatusCode, bool) {
 		switch code {
@@ -329,8 +329,7 @@ func (s Streams) readOnce(ctx context.Context, id string, after *string, failure
 		}
 		*after = item.Offset
 		if !yield(item, nil) || item.End {
-			_ = conn.Close(websocket.StatusNormalClosure, "")
-			return websocket.StatusNormalClosure, true
+			return websocket.StatusNormalClosure, true // done closes the socket
 		}
 	}
 }
