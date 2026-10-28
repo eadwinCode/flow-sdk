@@ -1,6 +1,54 @@
 # Changelog
 
-## Unreleased
+## v0.7.0
+
+New calls so an app can run a job queue, an event bus and live output streams on
+Flow (what agentic-kit needs). Each needs an engine that has the new routes; with
+an older engine they fail with `404`.
+
+- **Start a run directly, and learn if it did not start.** TypeScript
+  `flow.start(fn, { data, id, user })`, Go `client.Start(ctx, functionID, flow.StartOpts{...})`.
+  It answers `{ started: true, runId, eventId }`, or `{ started: false, reason }` with
+  `reason` `"singleton"` (and the `activeRunId` that holds the key), `"paused"` or
+  `"not_found"`. It does not throw for those. Singleton, throttle, concurrency and
+  priority apply; rate limit, debounce and batching do not. The same `id` lands on the
+  same run (`existed: true`). Route: `POST /v1/functions/{id}/start`.
+- **Run tags.** A new function option: up to 3 named expressions over `event`,
+  worked out when a run starts. TypeScript `tags: { orderId: "event.data.orderId" }`,
+  Go `FunctionOpts.Tags`. They go to the engine in the manifest (`tags` in the
+  function config). Both SDKs check the count and the names at `createFunction`.
+- **Find, count and cancel runs.** TypeScript `flow.runs.list`, `counts`, `singleton`
+  and `cancel`; Go `client.Runs().List`, `Counts`, `Singleton` and `Cancel`. List by
+  function, status and tag; count by status; look up the run that holds a singleton
+  key (no index lag); cancel by run ID, singleton key or tag. Routes: `GET /v1/runs`,
+  `GET /v1/runs/counts`, `GET /v1/functions/{id}/singleton`, `POST /v1/runs/cancel`.
+- **Attempts in the failure event.** `inngest/function.failed` has `attempts`: how
+  many times the call that failed the run was tried (0 when no try failed). TypeScript: `onFailure` gets `attempts`. Go:
+  a new `FailedEventData` type for a failure function's event data.
+- **Subscribe to realtime from a server.** TypeScript `flow.realtime.subscribe({ channel, topics, onMessage })`,
+  Go `client.Realtime().Subscribe(ctx, flow.SubscribeOpts{...})`. Each makes its own
+  token before every connect, and connects at the client's `baseUrl`. Messages can be
+  lost on a reconnect: read missed state from your own store.
+- **Many channels on one socket.** `flow.realtime.token` and `subscribe` take
+  `channels` (1 to 100) instead of `channel`. Go: `Realtime().TokenMany` and
+  `SubscribeOpts.Channels`. `RealtimeToken` has an optional `channels`.
+- **Type change: `RealtimeToken.channel` is now optional** (`channel?: string`), since
+  a token for many channels has `channels` instead. TypeScript code that reads
+  `token.channel` as a `string` no longer type-checks: use `token.channel ?? ""`, or
+  check it first.
+- **Publish many at once.** TypeScript `flow.realtime.publishMany(messages)`, Go
+  `Realtime().PublishMany(ctx, []flow.RealtimeOut{...})`: 1 to 100 messages in one
+  call, all or none.
+- **Streams: kept output, read from any offset.** TypeScript `flow.streams.open`,
+  `append`, `snapshot`, `close`, `delete`, `token` and `read` (an async iterable), and
+  `readStream` in `@clevix/flow/realtime` for the browser. Go `client.Streams()` with
+  the same calls, `Read` as an `iter.Seq2`. New errors: `StreamGoneError` and
+  `StreamClosedError` (TypeScript), `ErrStreamGone` and `ErrStreamClosed` (Go). See
+  [docs/streams.md](docs/streams.md).
+- **Go has its first dependency:** `github.com/coder/websocket`, for `Subscribe` and
+  `Streams().Read`.
+- Docs: sleeps have no upper limit, and a sleeping run is never deleted while it
+  sleeps.
 
 - **New default engine URL: `https://worker.flow.clevixstudio.com`.** Both SDKs
   use it when `FLOW_BASE_URL` is not set (`flow.DefaultBaseURL` in Go,

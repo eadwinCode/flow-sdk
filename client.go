@@ -34,7 +34,8 @@ type ClientOpts struct {
 	BaseURL *string
 	// Dev turns off signature checks. Env: FLOW_DEV=1.
 	Dev *bool
-	// HTTPClient is used for sync and sending events. Default: http.DefaultClient.
+	// HTTPClient is used for every call to the engine, and for sockets
+	// (Subscribe, Streams().Read). Default: http.DefaultClient.
 	HTTPClient *http.Client
 	// NoStreaming turns off streamed answers: answers are sent whole at the end.
 	// By default a POST answer is streamed when the engine asks for it, so a
@@ -297,6 +298,71 @@ func (c *Client) doWithKeys(ctx context.Context, method, u string, body []byte) 
 		}
 	}
 	return status, header, b, nil
+}
+
+// signed sends a call to the engine at path, signed like doWithKeys. payload
+// is sent as JSON; nil sends no body.
+func (c *Client) signed(ctx context.Context, method, path string, payload any) (int, []byte, error) {
+	var body []byte
+	if payload != nil {
+		b, err := json.Marshal(payload)
+		if err != nil {
+			return 0, nil, err
+		}
+		body = b
+	}
+	status, _, b, err := c.doWithKeys(ctx, method, c.baseURL+path, body)
+	return status, b, err
+}
+
+// callSigned sends a signed call and reads a 2xx answer into out (when out is
+// not nil). what names the call in errors. Any other status is an *apiError.
+func (c *Client) callSigned(ctx context.Context, what, method, path string, payload, out any) error {
+	status, b, err := c.signed(ctx, method, path, payload)
+	if err != nil {
+		return fmt.Errorf("flow: %s: %w", what, err)
+	}
+	if status/100 != 2 {
+		return answerError(what, status, b)
+	}
+	if out == nil {
+		return nil
+	}
+	if err := json.Unmarshal(b, out); err != nil {
+		return fmt.Errorf("flow: cannot read the engine's answer: %w", err)
+	}
+	return nil
+}
+
+// apiError is an error answer from the engine: { error, status, code? }.
+type apiError struct {
+	what   string
+	status int
+	code   string
+	msg    string
+}
+
+func (e *apiError) Error() string {
+	return fmt.Sprintf("flow: %s failed (%d): %s", e.what, e.status, e.msg)
+}
+
+// Is lets errors.Is find ErrStreamGone and ErrStreamClosed by the answer's code.
+func (e *apiError) Is(target error) bool {
+	switch target {
+	case ErrStreamGone:
+		return e.code == "StreamGone"
+	case ErrStreamClosed:
+		return e.code == "StreamClosed"
+	}
+	return false
+}
+
+func answerError(what string, status int, b []byte) *apiError {
+	var e struct {
+		Code string `json:"code"`
+	}
+	_ = json.Unmarshal(b, &e)
+	return &apiError{what: what, status: status, code: e.Code, msg: engineError(b)}
 }
 
 func (c *Client) do(req *http.Request) (int, []byte, error) {

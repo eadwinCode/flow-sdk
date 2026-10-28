@@ -45,6 +45,34 @@ export class StepError extends Error {
   }
 }
 
+/**
+ * The stream does not exist: it was never opened, or it was deleted (its time ran out,
+ * or `delete` was called). `flow.streams` throws it on the engine's 404 `StreamGone`,
+ * and `read` throws it when the engine closes the socket with 4404.
+ */
+export class StreamGoneError extends Error {
+  override readonly name: string = "StreamGoneError";
+
+  readonly streamId: string;
+
+  constructor(streamId: string) {
+    super(`stream ${streamId} is gone`);
+    this.streamId = streamId;
+  }
+}
+
+/** An append to a stream that is closed. `flow.streams.append` throws it on the engine's 409 `StreamClosed`. */
+export class StreamClosedError extends Error {
+  override readonly name: string = "StreamClosedError";
+
+  readonly streamId: string;
+
+  constructor(streamId: string) {
+    super(`stream ${streamId} is closed`);
+    this.streamId = streamId;
+  }
+}
+
 /** Turns anything thrown into the wire error shape. */
 export function serializeError(err: unknown): SerializedError {
   if (err && typeof err === "object" && "message" in err) {

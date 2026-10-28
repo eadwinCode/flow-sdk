@@ -1,4 +1,4 @@
-// Browser side of realtime: `@clevix/flow/realtime`. No server code in here.
+// Browser side of realtime and streams: `@clevix/flow/realtime`. No server code in here.
 //
 //   const stop = subscribe({
 //     refreshToken: () => fetch("/api/realtime-token").then((r) => r.json()),
@@ -8,13 +8,25 @@
 // It asks your server for a token (your server calls flow.realtime.token after its own
 // user check), connects, and connects again after a drop (backoff 1 s up to 30 s) or
 // when the engine ends the socket at the end of its life (close code 4001).
+//
+// `readStream` reads a stream the same way (your server calls flow.streams.token), and
+// connects again from the last offset it gave you.
+
+import type { StreamGoneError } from "./errors.ts";
+import { readStreamWith, subscribeWith, tokenUrl } from "./socket.ts";
+
+export { CLOSE_ENDED, CLOSE_EXPIRED, CLOSE_GONE } from "./socket.ts";
+export { StreamGoneError } from "./errors.ts";
 
 /** What `flow.realtime.token()` returns, and what `refreshToken` must give back. */
 export interface RealtimeToken {
   token: string;
   /** The engine's WebSocket URL, e.g. "wss://worker.flow.clevixstudio.com/v1/realtime/connect". */
   url: string;
-  channel: string;
+  /** The channel of a one-channel token. A token for many channels has `channels` instead. */
+  channel?: string;
+  /** The channels of a token for many channels, instead of `channel`. */
+  channels?: string[];
   topics: string[];
   /** Connect deadline, ms since epoch (about a minute after it was made). */
   expiresAt: number;
@@ -39,89 +51,54 @@ export interface SubscribeOptions<T = unknown> {
   WebSocket?: typeof WebSocket;
 }
 
-/** Close code the engine uses when a socket reaches the end of its life. */
-export const CLOSE_EXPIRED = 4001;
-const PING_MS = 30_000;
-const MIN_BACKOFF_MS = 1_000;
-const MAX_BACKOFF_MS = 30_000;
-
 /** Subscribes until the returned function is called. */
 export function subscribe<T = unknown>(options: SubscribeOptions<T>): () => void {
-  const Socket = options.WebSocket ?? globalThis.WebSocket;
-  if (!Socket) throw new Error("subscribe needs a WebSocket (pass options.WebSocket outside a browser)");
-  let stopped = false;
-  let ws: WebSocket | null = null;
-  let ping: ReturnType<typeof setInterval> | undefined;
-  let retry: ReturnType<typeof setTimeout> | undefined;
-  let failures = 0;
+  return subscribeWith(options, tokenUrl);
+}
 
-  const setState = (state: RealtimeState, error?: Error) => {
-    if (!stopped) options.onState?.(state, error);
-  };
+/** What `flow.streams.token()` returns, and what `readStream`'s `refreshToken` must give back. */
+export interface StreamToken {
+  token: string;
+  /** The engine's WebSocket URL, e.g. "wss://worker.flow.clevixstudio.com/v1/streams/connect". */
+  url: string;
+  stream: string;
+  /** Connect deadline, ms since epoch (about a minute after it was made). */
+  expiresAt: number;
+}
 
-  const later = (now: boolean) => {
-    if (stopped) return;
-    if (now) {
-      void open();
-      return;
-    }
-    const base = Math.min(MAX_BACKOFF_MS, MIN_BACKOFF_MS * 2 ** failures);
-    failures += 1;
-    retry = setTimeout(() => void open(), base * (0.5 + Math.random() / 2));
-  };
+/** One item of a stream. */
+export interface StreamItem<T = unknown> {
+  /** Its place in the stream, as text ("1", "2", ...). Pass it back as `after`. */
+  offset: string;
+  item: T;
+  /** Set on the end item, the last one, that `close` wrote. */
+  end?: true;
+}
 
-  const open = async () => {
-    if (stopped) return;
-    setState("connecting");
-    let socket: WebSocket;
-    try {
-      const token = await options.refreshToken();
-      if (stopped) return;
-      if (!token || typeof token.url !== "string" || typeof token.token !== "string") {
-        throw new Error("refreshToken did not return a token (check that your token route answered 200)");
-      }
-      // The constructor throws on a bad URL; that must not end the reconnect loop.
-      socket = new Socket(`${token.url}?token=${encodeURIComponent(token.token)}`);
-    } catch (err) {
-      setState("error", err instanceof Error ? err : new Error(String(err)));
-      later(false);
-      return;
-    }
-    ws = socket;
-    socket.onopen = () => {
-      failures = 0;
-      setState("open");
-      ping = setInterval(() => {
-        if (socket.readyState === socket.OPEN) socket.send("ping");
-      }, PING_MS);
-    };
-    socket.onmessage = (event) => {
-      if (event.data === "pong" || typeof event.data !== "string") return;
-      let message: RealtimeMessage<T>;
-      try {
-        message = JSON.parse(event.data) as RealtimeMessage<T>;
-      } catch {
-        return;
-      }
-      if (!stopped) options.onMessage(message);
-    };
-    socket.onclose = (event) => {
-      clearInterval(ping);
-      if (ws === socket) ws = null;
-      if (stopped) return;
-      setState("closed");
-      // The socket's life ended: a new token, right away. Anything else: back off.
-      later(event.code === CLOSE_EXPIRED);
-    };
-    socket.onerror = () => setState("error", new Error("realtime socket error"));
-  };
+export interface ReadStreamOptions<T = unknown> {
+  /** Gets a new token from your server. Called before every connect. */
+  refreshToken: () => Promise<StreamToken>;
+  /** Start after this offset. Default: from the start. */
+  after?: string;
+  /** Gets every item, the end item too. */
+  onItem: (item: StreamItem<T>) => void;
+  /**
+   * The stream has ended. Reading stops. Called with nothing: after `onItem` got the end
+   * item, or at once when the stream was closed and had nothing after `after` (the
+   * reader already had the end item).
+   */
+  onEnd?: () => void;
+  /** The stream is gone (never opened, or deleted). Reading stops. */
+  onGone?: (error: StreamGoneError) => void;
+  onState?: (state: RealtimeState, error?: Error) => void;
+  /** For tests or other runtimes. Default: the global WebSocket. */
+  WebSocket?: typeof WebSocket;
+}
 
-  void open();
-  return () => {
-    stopped = true;
-    clearTimeout(retry);
-    clearInterval(ping);
-    ws?.close(1000, "unsubscribed");
-    ws = null;
-  };
+/**
+ * Reads a stream until the end item, until it is gone, or until the returned function
+ * is called. After a drop it connects again from the last offset it gave `onItem`.
+ */
+export function readStream<T = unknown>(options: ReadStreamOptions<T>): () => void {
+  return readStreamWith(options, tokenUrl);
 }

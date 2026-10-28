@@ -2,19 +2,10 @@ import { signingKeyBearer } from "@clevix/protocol";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Flow } from "../src/index.ts";
 import { CLOSE_EXPIRED, subscribe, type RealtimeToken } from "../src/realtime.ts";
+import { FakeSocket, fakeFetch, flushPromises, sockets } from "./fakes.ts";
 
 const KEY = `signkey-${"ab".repeat(32)}`;
 const OLD_KEY = `signkey-${"cd".repeat(32)}`;
-
-function fakeFetch(answer: (url: string, init: RequestInit) => Response) {
-  const calls: Array<{ url: string; auth: string | undefined; body: unknown }> = [];
-  const fetch = (async (url: string, init: RequestInit) => {
-    const headers = init.headers as Record<string, string>;
-    calls.push({ url, auth: headers.Authorization, body: JSON.parse(init.body as string) });
-    return answer(url, init);
-  }) as unknown as typeof globalThis.fetch;
-  return { fetch, calls };
-}
 
 describe("flow.realtime (server)", () => {
   it("publishes with the app ID and the signing key bearer", async () => {
@@ -24,7 +15,9 @@ describe("flow.realtime (server)", () => {
     expect(calls).toEqual([
       {
         url: "https://engine.test/v1/realtime/publish",
+        method: "POST",
         auth: `Bearer ${await signingKeyBearer(KEY)}`,
+        contentType: "application/json",
         body: { appId: "shop", channel: "deployment:1", topic: "progress", data: { pct: 40 } },
       },
     ]);
@@ -61,41 +54,151 @@ describe("flow.realtime (server)", () => {
   });
 });
 
-/** A WebSocket stand-in the test drives by hand. */
-class FakeSocket {
-  static all: FakeSocket[] = [];
-  readonly OPEN = 1;
-  readyState = 0;
-  sent: string[] = [];
-  closedWith: number | null = null;
-  onopen: (() => void) | null = null;
-  onmessage: ((e: { data: unknown }) => void) | null = null;
-  onclose: ((e: { code: number }) => void) | null = null;
-  onerror: (() => void) | null = null;
-  constructor(readonly url: string) {
-    FakeSocket.all.push(this);
-  }
-  send(data: string) {
-    this.sent.push(data);
-  }
-  close(code = 1000) {
-    this.closedWith = code;
-  }
-  // driven by the test
-  open() {
-    this.readyState = 1;
-    this.onopen?.();
-  }
-  receive(data: unknown) {
-    this.onmessage?.({ data: typeof data === "string" ? data : JSON.stringify(data) });
-  }
-  drop(code: number) {
-    this.readyState = 3;
-    this.onclose?.({ code });
-  }
-}
 
-const flushPromises = () => new Promise((r) => setTimeout(r, 0));
+describe("flow.realtime (server, agentic-kit)", () => {
+  afterEach(() => {
+    FakeSocket.all = [];
+    vi.useRealTimers();
+  });
+
+  it("publishMany sends every message in one call", async () => {
+    const { fetch, calls } = fakeFetch(() => Response.json({ ok: true, count: 2 }, { status: 202 }));
+    const flow = new Flow({ id: "shop", signingKey: KEY, baseUrl: "https://engine.test", fetch });
+    await flow.realtime.publishMany([
+      { channel: "a", topic: "t", data: 1 },
+      { channel: "b", topic: "t", data: { n: 2 } },
+    ]);
+    expect(calls).toEqual([
+      {
+        url: "https://engine.test/v1/realtime/publish",
+        method: "POST",
+        auth: `Bearer ${await signingKeyBearer(KEY)}`,
+        contentType: "application/json",
+        body: {
+          appId: "shop",
+          messages: [
+            { channel: "a", topic: "t", data: 1 },
+            { channel: "b", topic: "t", data: { n: 2 } },
+          ],
+        },
+      },
+    ]);
+  });
+
+  it("publishMany checks the count and throws with the engine's error", async () => {
+    const { fetch, calls } = fakeFetch(() => Response.json({ error: "messages[1]: topic is required", status: 400 }, { status: 400 }));
+    const flow = new Flow({ id: "shop", signingKey: KEY, baseUrl: "https://engine.test", fetch });
+    await expect(flow.realtime.publishMany([])).rejects.toThrow("1 to 100 messages, not 0");
+    const many = Array.from({ length: 101 }, () => ({ channel: "c", topic: "t", data: 1 }));
+    await expect(flow.realtime.publishMany(many)).rejects.toThrow("not 101");
+    expect(calls).toHaveLength(0);
+    await expect(flow.realtime.publishMany([{ channel: "c", topic: "", data: 1 }])).rejects.toThrow(
+      "realtime publishMany failed (400): messages[1]: topic is required",
+    );
+  });
+
+  it("makes a token for many channels", async () => {
+    const token = { token: "tok", url: "wss://e/v1/realtime/connect", channels: ["a", "b"], topics: ["t"], expiresAt: 1 };
+    const { fetch, calls } = fakeFetch(() => Response.json(token));
+    const flow = new Flow({ id: "shop", signingKey: KEY, baseUrl: "https://engine.test", fetch });
+    expect(await flow.realtime.token({ channels: ["a", "b"], topics: ["t"] })).toEqual(token);
+    expect(calls[0]?.body).toEqual({ appId: "shop", channels: ["a", "b"], topics: ["t"] });
+  });
+
+  function serverFlow() {
+    let n = 0;
+    const { fetch, calls } = fakeFetch(() => {
+      n += 1;
+      // The engine names a host the server can not reach (a proxy, or wrangler dev).
+      return Response.json({ token: `tok ${n}`, url: "wss://public.example.com/v1/realtime/connect", channel: "c", topics: ["t"], expiresAt: 0 });
+    });
+    const flow = new Flow({ id: "shop", signingKey: KEY, baseUrl: "http://localhost:8787/", fetch });
+    return { flow, calls };
+  }
+
+  it("subscribe makes its own token and connects at baseUrl, not the token's host", async () => {
+    const { flow, calls } = serverFlow();
+    const messages: unknown[] = [];
+    const states: string[] = [];
+    flow.realtime.subscribe({
+      channel: "c",
+      topics: ["t"],
+      onMessage: (m) => messages.push(m.data),
+      onState: (s) => states.push(s),
+      WebSocket: FakeSocket as unknown as typeof WebSocket,
+    });
+    await sockets(1);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toMatchObject({ url: "http://localhost:8787/v1/realtime/token", body: { appId: "shop", channel: "c", topics: ["t"] } });
+    expect(FakeSocket.all).toHaveLength(1);
+    expect(FakeSocket.all[0]!.url).toBe("ws://localhost:8787/v1/realtime/connect?token=tok%201");
+    expect(FakeSocket.all.some((ws) => ws.url.includes("public.example.com"))).toBe(false);
+    FakeSocket.all[0]!.open();
+    FakeSocket.all[0]!.receive({ channel: "c", topic: "t", data: { n: 1 }, ts: 1 });
+    expect(messages).toEqual([{ n: 1 }]);
+    expect(states).toEqual(["connecting", "open"]);
+  });
+
+  it("subscribe asks a fresh token before every connect", async () => {
+    const { flow, calls } = serverFlow();
+    const stop = flow.realtime.subscribe({
+      channels: ["a", "b"],
+      topics: ["t"],
+      onMessage: () => {},
+      WebSocket: FakeSocket as unknown as typeof WebSocket,
+    });
+    await sockets(1);
+    FakeSocket.all[0]!.open();
+    FakeSocket.all[0]!.drop(CLOSE_EXPIRED);
+    await sockets(2);
+    expect(calls).toHaveLength(2);
+    expect(calls[1]?.body).toEqual({ appId: "shop", channels: ["a", "b"], topics: ["t"] });
+    expect(FakeSocket.all[1]!.url).toBe("ws://localhost:8787/v1/realtime/connect?token=tok%202");
+    stop();
+    expect(FakeSocket.all[1]!.closedWith).toBe(1000);
+  });
+
+  it("subscribe uses wss for an https baseUrl", async () => {
+    const { fetch } = fakeFetch(() => Response.json({ token: "t", url: "ws://other/v1/realtime/connect", channel: "c", topics: ["t"], expiresAt: 0 }));
+    const flow = new Flow({ id: "shop", signingKey: KEY, baseUrl: "https://engine.test/flow", fetch });
+    flow.realtime.subscribe({ channel: "c", topics: ["t"], onMessage: () => {}, WebSocket: FakeSocket as unknown as typeof WebSocket });
+    await sockets(1);
+    expect(FakeSocket.all[0]!.url).toBe("wss://engine.test/flow/v1/realtime/connect?token=t");
+  });
+
+  it("subscribe throws at once for bad options", () => {
+    const { flow } = serverFlow();
+    const WebSocket = FakeSocket as unknown as typeof globalThis.WebSocket;
+    expect(() => flow.realtime.subscribe({ channel: "", topics: ["t"], onMessage: () => {}, WebSocket })).toThrow("needs a channel");
+    expect(() => flow.realtime.subscribe({ channels: [], topics: ["t"], onMessage: () => {}, WebSocket })).toThrow("1 to 100 channels");
+    const many = Array.from({ length: 101 }, (_, i) => `c${i}`);
+    expect(() => flow.realtime.subscribe({ channels: many, topics: ["t"], onMessage: () => {}, WebSocket })).toThrow("1 to 100 channels");
+    const both = { channel: "c", channels: ["a"], topics: ["t"], onMessage: () => {}, WebSocket } as unknown as Parameters<typeof flow.realtime.subscribe>[0];
+    expect(() => flow.realtime.subscribe(both)).toThrow("give channel or channels, not both");
+    expect(FakeSocket.all).toHaveLength(0);
+  });
+
+  it("token checks channels before any call", async () => {
+    const { flow, calls } = serverFlow();
+    await expect(flow.realtime.token({ channels: [], topics: ["t"] })).rejects.toThrow("channels must list 1 to 100 channels");
+    const many = Array.from({ length: 101 }, (_, i) => `c${i}`);
+    await expect(flow.realtime.token({ channels: many, topics: ["t"] })).rejects.toThrow("1 to 100 channels");
+    const both = { channel: "c", channels: ["a"], topics: ["t"] } as unknown as { channel: string; topics: string[] };
+    await expect(flow.realtime.token(both)).rejects.toThrow("not both");
+    await expect(flow.realtime.token({ channel: "", topics: ["t"] })).rejects.toThrow("needs a channel");
+    // 100 names of 81 characters: 8,100 characters in all.
+    const long = Array.from({ length: 100 }, (_, i) => `${i}`.padStart(81, "x"));
+    await expect(flow.realtime.token({ channels: long, topics: ["t"] })).rejects.toThrow("8100 characters of names in all (at most 8000)");
+    expect(() =>
+      flow.realtime.subscribe({ channels: long, topics: ["t"], onMessage: () => {}, WebSocket: FakeSocket as unknown as typeof WebSocket }),
+    ).toThrow("at most 8000");
+    expect(calls).toHaveLength(0);
+    await flow.realtime.token({ channels: long.map((c) => c.slice(1)), topics: ["t"] }); // 8,000 is fine
+    await flow.realtime.token({ channels: Array.from({ length: 100 }, (_, i) => `c${i}`), topics: ["t"] });
+    expect(calls).toHaveLength(2);
+    expect(() => flow.realtime.subscribe({ channel: "c", topics: [], onMessage: () => {}, WebSocket })).toThrow("at least one topic");
+  });
+});
 
 describe("subscribe (browser)", () => {
   afterEach(() => {
@@ -133,6 +236,16 @@ describe("subscribe (browser)", () => {
     expect(states).toEqual(["connecting", "open"]);
   });
 
+  it("passes a closing frame on as a message (only stream readers act on it)", async () => {
+    const { messages, refreshToken } = start();
+    await flushPromises();
+    FakeSocket.all[0]!.open();
+    FakeSocket.all[0]!.receive({ closing: 4001 });
+    expect(FakeSocket.all[0]!.closedWith).toBeNull();
+    expect(refreshToken).toHaveBeenCalledTimes(1);
+    expect(messages).toEqual([undefined]);
+  });
+
   it("gets a new token and connects again at once after 4001", async () => {
     const { refreshToken } = start();
     await flushPromises();
@@ -152,6 +265,49 @@ describe("subscribe (browser)", () => {
     expect(refreshToken).toHaveBeenCalledTimes(1);
     await vi.advanceTimersByTimeAsync(700);
     expect(refreshToken).toHaveBeenCalledTimes(2);
+  });
+
+  it("backs off more each time a socket opens and closes at once", async () => {
+    vi.useFakeTimers();
+    vi.spyOn(Math, "random").mockReturnValue(0); // each wait is half its base
+    const { refreshToken } = start();
+    await vi.advanceTimersByTimeAsync(0);
+    for (const [i, wait] of [500, 1_000, 2_000, 4_000].entries()) {
+      const ws = FakeSocket.all[i]!;
+      ws.open();
+      ws.drop(1006);
+      await vi.advanceTimersByTimeAsync(wait - 1);
+      expect(refreshToken).toHaveBeenCalledTimes(i + 1);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(refreshToken).toHaveBeenCalledTimes(i + 2);
+    }
+    vi.restoreAllMocks();
+  });
+
+  it("starts the backoff again after a socket stayed open 10 s", async () => {
+    vi.useFakeTimers();
+    vi.spyOn(Math, "random").mockReturnValue(0);
+    const { refreshToken } = start();
+    await vi.advanceTimersByTimeAsync(0);
+    FakeSocket.all[0]!.drop(1006); // a failure: the next wait is 1 s
+    await vi.advanceTimersByTimeAsync(500);
+    FakeSocket.all[1]!.open();
+    await vi.advanceTimersByTimeAsync(10_000);
+    FakeSocket.all[1]!.drop(1006);
+    await vi.advanceTimersByTimeAsync(500);
+    expect(refreshToken).toHaveBeenCalledTimes(3);
+    vi.restoreAllMocks();
+  });
+
+  it("a late error event from a closed socket changes no state", async () => {
+    const { states } = start();
+    await flushPromises();
+    const ws = FakeSocket.all[0]!;
+    ws.open();
+    ws.error();
+    ws.drop(1006);
+    ws.error();
+    expect(states).toEqual(["connecting", "open", "error", "closed"]);
   });
 
   it("pings every 30 s while open", async () => {

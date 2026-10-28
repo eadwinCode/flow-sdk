@@ -25,6 +25,7 @@ Guides:
 - [Errors and retries](errors.md): retries, giving up, undoing, failure handlers, timeouts
 - [Flow control](flow-control.md): concurrency, throttle, rate limit, debounce, batching, priority, idempotency, singleton
 - [Realtime](realtime.md): live messages from a function to the browser
+- [Streams](streams.md): kept output a reader follows from any offset
 - [Going to production](production.md): sync, keys, the dashboard, troubleshooting
 
 Reference:

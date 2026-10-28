@@ -10,9 +10,9 @@ import (
 // the step ran out of retries (or a child function failed). The function can
 // check for it with errors.As and run compensation steps.
 type StepError struct {
-	Name    string
-	Message string
-	Stack   string
+	Name    string `json:"name"`
+	Message string `json:"message"`
+	Stack   string `json:"stack,omitempty"`
 }
 
 func (e *StepError) Error() string {

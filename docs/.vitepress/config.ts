@@ -108,6 +108,7 @@ export default defineConfig({
           { text: 'Errors and retries', link: '/errors' },
           { text: 'Flow control', link: '/flow-control' },
           { text: 'Realtime', link: '/realtime' },
+          { text: 'Streams', link: '/streams' },
           { text: 'Going to production', link: '/production' },
         ],
       },
