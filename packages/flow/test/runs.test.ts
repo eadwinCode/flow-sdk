@@ -275,6 +275,15 @@ describe("run control", () => {
     expect(await flow.runs.retry("run_1")).toEqual({ retried: false });
   });
 
+  it("refuses an empty run or function ID before any call", async () => {
+    const { flow, calls } = client(() => Response.json({}));
+    await expect(flow.runs.get("")).rejects.toThrow("runs get needs a run id");
+    await expect(flow.runs.retry("")).rejects.toThrow("runs retry needs a run id");
+    await expect(flow.runs.delete("")).rejects.toThrow("runs delete needs a run id");
+    await expect(flow.functions.pause("")).rejects.toThrow("function pause needs a function id");
+    expect(calls).toHaveLength(0);
+  });
+
   it("runs.delete posts to the run's delete route; a 404 is not deleted", async () => {
     let missing = false;
     const { flow, calls } = client(() =>

@@ -174,6 +174,7 @@ export class Flow {
   /** Pauses and resumes the app's functions, as the dashboard does. */
   get functions(): FlowFunctions {
     const call = async (fn: string | FlowFunction, action: "pause" | "resume", env?: FlowEnv) => {
+      if (!this.functionIdOf(fn)) throw new Error(`function ${action} needs a function id`);
       const path = `/v1/functions/${encodeURIComponent(this.functionIdOf(fn))}/${action}`;
       const res = await this.callSigned("POST", path, { appId: this.id }, env);
       if (!res.ok) throw failed(`function ${action}`, res);
@@ -239,6 +240,7 @@ export class Flow {
         return res.body as CancelResult;
       },
       get: async (runId, options = {}) => {
+        if (!runId) throw new Error("runs get needs a run id");
         const path = this.withQuery(`/v1/runs/${encodeURIComponent(runId)}`, {});
         const res = await this.callSigned("GET", path, undefined, options.env);
         if (res.status === 404) return null;
@@ -246,12 +248,14 @@ export class Flow {
         return res.body as RunDetail;
       },
       retry: async (runId, options = {}) => {
+        if (!runId) throw new Error("runs retry needs a run id");
         const res = await this.callSigned("POST", `/v1/runs/${encodeURIComponent(runId)}/retry`, { appId: this.id }, options.env);
         if (res.status === 404) return { retried: false };
         if (!res.ok) throw failed("runs retry", res);
         return res.body as RetryResult;
       },
       delete: async (runId, options = {}) => {
+        if (!runId) throw new Error("runs delete needs a run id");
         const res = await this.callSigned("POST", `/v1/runs/${encodeURIComponent(runId)}/delete`, { appId: this.id }, options.env);
         if (res.status === 404) return { deleted: false };
         if (!res.ok) throw failed("runs delete", res);
