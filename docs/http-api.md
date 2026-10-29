@@ -87,10 +87,13 @@ Starts a run of one function now, without an event, and tells you if it did not
 start.
 
 ```json
-{ "data": { "orderId": "o_123" }, "id": "order-o_123", "user": { "id": "u_1" } }
+{ "data": { "orderId": "o_123" }, "id": "order-o_123", "user": { "id": "u_1" }, "whenPaused": "hold" }
 ```
 
 - `data` defaults to `{}`. `user` is optional.
+- `whenPaused` is `"refuse"` (the default) or `"hold"`. With `"hold"`, a paused
+  function takes the run anyway: it is made `paused`, and starts when the function is
+  resumed. The answer is then `started: true`.
 - `id` (1 to 256 characters) makes a retry safe: the same `id` lands on the same run.
   The answer then has `"existed": true`, whatever the run's state.
 - Singleton, throttle, concurrency and priority apply. Rate limit, debounce and
@@ -105,7 +108,7 @@ Answers:
 | `200` | `{"started":false,"reason":"singleton","activeRunId":"run_..."}` | A run with the same singleton key is active. `activeRunId` is `null` if it ended in between. |
 | `200` | `{"started":false,"reason":"paused"}` | The function is paused. |
 | `200` | `{"started":false,"reason":"not_found"}` | The app has no function with that ID. |
-| `400` | `{"error":"...","status":400}` | The body is not JSON, or `id` is not 1 to 256 characters. |
+| `400` | `{"error":"...","status":400}` | The body is not JSON, `id` is not 1 to 256 characters, or `whenPaused` is not `"refuse"` or `"hold"`. |
 | `402`, `403` | as for [`POST /e`](#post-e-send-events) | The account's money is used up, or the workspace is suspended. |
 | `413` | `{"error":"...","status":413}` | The event is over 1 MB, or the body over 2 MB. |
 | `429` | `{"error":"...","status":429,"code":"RateLimited"}` | Too many events a second for the plan. Has `Retry-After`. |
@@ -126,8 +129,9 @@ GET /v1/runs?function=send-welcome&status=queued,sleeping&tag.orderId=o_123&limi
 | `tag.<name>` | Only runs with this [tag](functions.md#tags) value. Up to 3; all must match. |
 | `limit` | 1 to 200. Default 50. |
 | `before` | The `next` of the last page. |
+| `order` | `newest` (the default) or `oldest`: oldest first. |
 
-Answer, newest first:
+Answer, newest first (or oldest first):
 
 ```json
 {
@@ -207,6 +211,70 @@ A run that has ended, or is not found, goes in `notActive`; that is not an error
 function gives empty lists. By `singletonKey`, it is `404` for an unknown function and
 `400` for a function with no `singleton`. `400` when the body does not have exactly
 one of the three, or a `tag` with more than one entry.
+
+## `GET /v1/runs/{runId}`: one run
+
+```json
+{ "id": "run_...", "functionId": "send-welcome", "status": "failed",
+  "createdAt": 1793000000000, "endedAt": 1793000060000, "tags": {},
+  "attempts": 4, "error": { "name": "Error", "message": "the mail server is down" },
+  "event": { "id": "evt_...", "name": "inngest/function.invoked", "data": { "orderId": "o_123" }, "ts": 1793000000000 } }
+```
+
+- The fields of [`GET /v1/runs`](#get-v1runs-list-runs), plus:
+- `attempts`: for a failed run, how many times the call that failed it was tried (as
+  the failure function's `attempts`). For any other run, how many times it was called.
+- `error`: why it failed or was cancelled, or `null`.
+- `event`: the event that started it. Not its steps or output: the dashboard shows those.
+
+It asks the run itself, so it has no lag. `404` for a run that is missing, deleted
+after its retention, or another app's.
+
+## `POST /v1/runs/{runId}/retry`: retry a run
+
+Body: `{}`. Retries a failed or cancelled run from where it stopped, as the
+dashboard's Retry. It keeps its run ID, and its finished steps are not run again.
+
+```json
+{ "retried": true }
+{ "retried": false }
+{ "retried": false, "reason": "singleton" }
+```
+
+`retried` is `false` for a run that has not failed or been cancelled. With `reason:
+"singleton"`, another run holds its singleton key now. `404` for a run that is
+missing or another app's. `402` or `403`, as for a start, when the workspace may
+start no runs.
+
+## `POST /v1/runs/{runId}/delete`: delete a run that has ended
+
+Body: `{}`. Deletes a completed, failed or cancelled run now, as its retention would
+later: its state, its stored files and its row in the run index.
+
+```json
+{ "deleted": true }
+```
+
+`deleted` is `false` for an active run (cancel it first). The delete runs a moment
+after the answer, so `GET /v1/runs` may list the run for a few seconds more. `404` for
+a run that is missing or another app's.
+
+## `POST /v1/functions/{functionId}/pause` and `/resume`
+
+Body: `{}`. Pauses (or resumes) one of the app's functions, as the dashboard does.
+
+```json
+{ "paused": true, "runs": 3 }
+```
+
+- Pause: new runs are refused (`reason: "paused"`), or held with a start's
+  `whenPaused: "hold"`. Events for the function are skipped. Its active runs pause at
+  their next step.
+- Resume: the function takes runs again, and its paused runs go on, held ones too.
+- `runs` is how many runs it paused or resumed. It finds them in the run index, which
+  lags: a run held a moment before a resume checks its function itself, within 30
+  seconds.
+- `404` for a function the app does not have.
 
 ## Realtime
 

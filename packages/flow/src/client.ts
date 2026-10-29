@@ -9,7 +9,10 @@ import type {
   FlowFunction,
   FunctionOptions,
   Handler,
+  PauseResult,
+  RetryResult,
   RunCounts,
+  RunDetail,
   RunPage,
   RunStatus,
   SingletonRun,
@@ -153,22 +156,38 @@ export class Flow {
    * (a singleton run holds the key, the function is paused, or there is no such
    * function). Singleton, throttle, concurrency and priority apply; rate limit,
    * debounce and batching do not. Pass the same `id` again to retry safely: it lands on
-   * the same run. Throws when the engine answers with an error.
+   * the same run. With `whenPaused: "hold"`, a paused function takes the run anyway:
+   * it waits, paused, and starts when the function is resumed. Throws when the engine
+   * answers with an error.
    */
   async start(
     fn: string | FlowFunction,
-    options: { data?: Json; id?: string; user?: Json; env?: FlowEnv } = {},
+    options: { data?: Json; id?: string; user?: Json; whenPaused?: "refuse" | "hold"; env?: FlowEnv } = {},
   ): Promise<StartResult> {
-    const { data, id, user, env } = options;
+    const { data, id, user, whenPaused, env } = options;
     const path = `/v1/functions/${encodeURIComponent(this.functionIdOf(fn))}/start`;
-    const res = await this.callSigned("POST", path, { appId: this.id, data, id: id || undefined, user }, env);
+    const res = await this.callSigned("POST", path, { appId: this.id, data, id: id || undefined, user, whenPaused }, env);
     if (!res.ok) throw failed("start", res);
     return res.body as StartResult;
   }
 
+  /** Pauses and resumes the app's functions, as the dashboard does. */
+  get functions(): FlowFunctions {
+    const call = async (fn: string | FlowFunction, action: "pause" | "resume", env?: FlowEnv) => {
+      const path = `/v1/functions/${encodeURIComponent(this.functionIdOf(fn))}/${action}`;
+      const res = await this.callSigned("POST", path, { appId: this.id }, env);
+      if (!res.ok) throw failed(`function ${action}`, res);
+      return res.body as PauseResult;
+    };
+    return {
+      pause: (fn, options = {}) => call(fn, "pause", options.env),
+      resume: (fn, options = {}) => call(fn, "resume", options.env),
+    };
+  }
+
   /**
-   * Finds, counts and cancels the app's runs. `list` and `counts` read an index that
-   * lags the runs by a few seconds; `singleton` and `cancel` do not.
+   * Finds, counts, cancels and retries the app's runs. `list` and `counts` read an
+   * index that lags the runs by a few seconds; the rest do not.
    */
   get runs(): FlowRuns {
     return {
@@ -179,6 +198,7 @@ export class Flow {
           status: options.status?.length ? options.status.join(",") : undefined,
           limit: options.limit === undefined ? undefined : String(options.limit),
           before: options.before || undefined,
+          order: options.order,
         };
         for (const [name, value] of Object.entries(options.tags ?? {})) params[`tag.${name}`] = value;
         const res = await this.callSigned("GET", this.withQuery("/v1/runs", params), undefined, options.env);
@@ -217,6 +237,25 @@ export class Flow {
         const res = await this.callSigned("POST", "/v1/runs/cancel", body, options.env);
         if (!res.ok) throw failed("runs cancel", res);
         return res.body as CancelResult;
+      },
+      get: async (runId, options = {}) => {
+        const path = this.withQuery(`/v1/runs/${encodeURIComponent(runId)}`, {});
+        const res = await this.callSigned("GET", path, undefined, options.env);
+        if (res.status === 404) return null;
+        if (!res.ok) throw failed("runs get", res);
+        return res.body as RunDetail;
+      },
+      retry: async (runId, options = {}) => {
+        const res = await this.callSigned("POST", `/v1/runs/${encodeURIComponent(runId)}/retry`, { appId: this.id }, options.env);
+        if (res.status === 404) return { retried: false };
+        if (!res.ok) throw failed("runs retry", res);
+        return res.body as RetryResult;
+      },
+      delete: async (runId, options = {}) => {
+        const res = await this.callSigned("POST", `/v1/runs/${encodeURIComponent(runId)}/delete`, { appId: this.id }, options.env);
+        if (res.status === 404) return { deleted: false };
+        if (!res.ok) throw failed("runs delete", res);
+        return res.body as { deleted: boolean };
       },
     };
   }
@@ -566,8 +605,9 @@ export interface FlowRealtime {
 /** `flow.runs`. On Workers, pass the handler's `env` if the keys live there. */
 export interface FlowRuns {
   /**
-   * The app's runs, newest first. A `tags` filter needs `function`. `limit` is 1 to 200
-   * (default 50). Reads an index that lags the runs by a few seconds.
+   * The app's runs, newest first (or oldest first with `order: "oldest"`). A `tags`
+   * filter needs `function`. `limit` is 1 to 200 (default 50). Reads an index that lags
+   * the runs by a few seconds.
    */
   list(options?: {
     function?: string | FlowFunction;
@@ -575,6 +615,7 @@ export interface FlowRuns {
     tags?: Record<string, string>;
     limit?: number;
     before?: string;
+    order?: "newest" | "oldest";
     env?: FlowEnv;
   }): Promise<RunPage>;
   /** How many runs of one function there are in each status. Reads the same index as `list`. */
@@ -596,6 +637,29 @@ export interface FlowRuns {
       | { function: string | FlowFunction; tag: Record<string, string>; status?: ActiveRunStatus[]; cursor?: string },
     options?: { env?: FlowEnv },
   ): Promise<CancelResult>;
+  /** One of the app's runs, with its event and error, with no index lag. Null when there is none. */
+  get(runId: string, options?: { env?: FlowEnv }): Promise<RunDetail | null>;
+  /**
+   * Retries a failed or cancelled run from where it stopped, under the same run ID, as
+   * the dashboard's Retry. `retried` is false for a run that has not ended that way.
+   */
+  retry(runId: string, options?: { env?: FlowEnv }): Promise<RetryResult>;
+  /**
+   * Deletes a run that has ended now, as its retention would later. `deleted` is false
+   * for an active run, or one that is not found.
+   */
+  delete(runId: string, options?: { env?: FlowEnv }): Promise<{ deleted: boolean }>;
+}
+
+/** `flow.functions`. On Workers, pass the handler's `env` if the keys live there. */
+export interface FlowFunctions {
+  /**
+   * Pauses a function: new runs are refused (or held, with `start`'s `whenPaused`), and
+   * its active runs pause at their next step.
+   */
+  pause(fn: string | FlowFunction, options?: { env?: FlowEnv }): Promise<PauseResult>;
+  /** Resumes a paused function and its paused runs. */
+  resume(fn: string | FlowFunction, options?: { env?: FlowEnv }): Promise<PauseResult>;
 }
 
 /**

@@ -208,6 +208,10 @@ if !res.Started && res.Reason == "singleton" {
 | `RunID`, `EventID` | The run and its event. |
 | `Existed` | `true` when a run with this `ID` was there already. Nothing new started. |
 | `Reason` | Why no run started: `singleton`, `paused` or `not_found`. |
+
+v0.8.0: `StartOpts.WhenPaused: "hold"` makes a paused function take the run anyway.
+The run waits, paused, and starts when the function is resumed. The default,
+`"refuse"`, answers `Reason: "paused"`.
 | `ActiveRunID` | With `singleton`: the run that holds the key. Empty if it ended in between. |
 
 The first argument is the function's own ID, as in `FunctionOpts.ID`. Singleton,
@@ -221,13 +225,16 @@ v0.7.0. `client.Runs()` sees only this app's runs.
 
 | Method | What it does |
 | --- | --- |
-| `List(ctx, flow.ListRunsOpts{Function, Status, Tags, Limit, Before})` | Lists runs, newest first. Gives a `flow.RunPage`: `Items` and `Next`. Pass `Next` as `Before` for the next page; it is empty on the last page. |
+| `List(ctx, flow.ListRunsOpts{Function, Status, Tags, Limit, Before, Order})` | Lists runs, newest first (`Order: "oldest"`: oldest first). Gives a `flow.RunPage`: `Items` and `Next`. Pass `Next` as `Before` for the next page; it is empty on the last page. |
 | `Counts(ctx, functionID)` | How many of the function's runs are in each status (`flow.RunCounts`). |
 | `Singleton(ctx, functionID, key)` | The active run that holds a singleton key (`RunID`, `Status`), or empty strings when none does. |
 | `Cancel(ctx, flow.CancelOpts{...})` | Cancels runs. Gives `Cancelled`, `NotActive` and `More`. |
+| `Get(ctx, runID)` | v0.8.0. One run (`*flow.RunDetail`): as in `List`, plus `Attempts`, `Error` and the `Event` that started it. Nil, nil when there is no such run. |
+| `Delete(ctx, runID)` | v0.8.0. Deletes a run that has ended now, as its retention would later. False for an active run, or one that is not found. |
+| `Retry(ctx, runID)` | v0.8.0. Retries a failed or cancelled run from where it stopped, under the same ID. `Retried` is false for a run that has not ended that way, or is not found. |
 
 - `List` and `Counts` read the engine's run index, which is a few seconds behind the
-  runs. `Singleton` is exact.
+  runs. `Singleton`, `Get` and `Retry` are exact.
 - `ListRunsOpts.Tags` needs `Function`. It takes up to 3 tags; a run must have all of
   them. `Status` takes statuses such as `queued`, `running`, `sleeping`.
 - `RunCounts.Since` is a time (ms): ended runs older than it may be gone from the
@@ -253,6 +260,15 @@ active run. (In `List`, an empty `Status` means every status.) A cancel by tag
 cancels up to 500 runs, oldest first. When `More` is `true`, call it again with
 `Cursor` set to the answer's `Next`, so it goes on after this page. `Cursor` is only
 for a cancel by tag; `Next` is empty when there is no more.
+
+## Pause and resume a function
+
+v0.8.0. `client.Functions().Pause(ctx, functionID)` pauses one of this app's
+functions, as the dashboard does: new runs are refused (or held, with
+`StartOpts.WhenPaused`), and its active runs pause at their next step.
+`Resume` lets the function and its paused runs go on. Each gives a
+`flow.PauseResult`: `Paused`, and `Runs`, how many runs it paused or resumed. An
+unknown function is an error (`404`).
 
 ## Subscribe from a server
 

@@ -20,6 +20,10 @@ type StartOpts struct {
 	ID string
 	// User is the event's user field. Optional.
 	User any
+	// WhenPaused says what a paused function does with the start: "refuse"
+	// (the default: Reason is "paused") or "hold" (the run is made paused, and
+	// starts when the function is resumed).
+	WhenPaused string
 }
 
 // StartResult says whether Start started a run.
@@ -59,6 +63,9 @@ func (c *Client) Start(ctx context.Context, functionID string, opts StartOpts) (
 	if opts.User != nil {
 		body["user"] = opts.User
 	}
+	if opts.WhenPaused != "" {
+		body["whenPaused"] = opts.WhenPaused
+	}
 	var res StartResult
 	err := c.callSigned(ctx, "start", http.MethodPost, "/v1/functions/"+url.PathEscape(functionID)+"/start", body, &res)
 	return res, err
@@ -85,6 +92,8 @@ type ListRunsOpts struct {
 	Limit int
 	// Before is RunPage.Next of the page before, to read the next page.
 	Before string
+	// Order is "newest" (the default) or "oldest": oldest first.
+	Order string
 }
 
 // RunSummary is one run in a RunPage.
@@ -150,6 +159,9 @@ func (r Runs) List(ctx context.Context, opts ListRunsOpts) (RunPage, error) {
 	}
 	if opts.Before != "" {
 		q.Set("before", opts.Before)
+	}
+	if opts.Order != "" {
+		q.Set("order", opts.Order)
 	}
 	var page RunPage
 	err := r.c.callSigned(ctx, "list runs", http.MethodGet, "/v1/runs?"+q.Encode(), nil, &page)
@@ -271,5 +283,139 @@ func (r Runs) Cancel(ctx context.Context, opts CancelOpts) (CancelResult, error)
 	}
 	var res CancelResult
 	err := r.c.callSigned(ctx, "cancel runs", http.MethodPost, "/v1/runs/cancel", body, &res)
+	return res, err
+}
+
+// RunDetail is one run, as Runs().Get gives it.
+type RunDetail struct {
+	RunSummary
+	// Attempts is, for a failed run, how many times the call that failed it
+	// was tried (as the failure function's attempts); for any other run, how
+	// many times it was called.
+	Attempts int `json:"attempts"`
+	// Error is why the run failed or was cancelled; nil otherwise.
+	Error *RunError `json:"error"`
+	// Event is the event that started the run. For a run from Start, its Data
+	// is StartOpts.Data.
+	Event RunEvent `json:"event"`
+}
+
+// RunError is a run's error, as the engine keeps it.
+type RunError struct {
+	Name    string `json:"name"`
+	Message string `json:"message"`
+	Stack   string `json:"stack,omitempty"`
+}
+
+// RunEvent is the event that started a run.
+type RunEvent struct {
+	ID   string          `json:"id"`
+	Name string          `json:"name"`
+	Data json.RawMessage `json:"data"`
+	// TS is ms since epoch.
+	TS int64 `json:"ts"`
+}
+
+// RetryResult says what Runs().Retry did.
+type RetryResult struct {
+	// Retried is false when the run had not failed or been cancelled, or
+	// another run holds its singleton key now (Reason "singleton").
+	Retried bool   `json:"retried"`
+	Reason  string `json:"reason,omitempty"`
+}
+
+// Get gives one of this app's runs, with its event and error (GET
+// /v1/runs/{id}). It asks the run itself, so it does not lag. Nil, nil when
+// there is no such run.
+func (r Runs) Get(ctx context.Context, runID string) (*RunDetail, error) {
+	if runID == "" {
+		return nil, errors.New("flow: Get needs a run id")
+	}
+	q := url.Values{"appId": {r.c.appID}}
+	var run RunDetail
+	err := r.c.callSigned(ctx, "get run", http.MethodGet, "/v1/runs/"+url.PathEscape(runID)+"?"+q.Encode(), nil, &run)
+	var ae *apiError
+	if errors.As(err, &ae) && ae.status == http.StatusNotFound {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &run, nil
+}
+
+// Retry retries a failed or cancelled run from where it stopped, under the
+// same run ID, as the dashboard's Retry (POST /v1/runs/{id}/retry). A run
+// that is missing, or has not ended that way, is not retried: Retried is
+// false, with no error.
+func (r Runs) Retry(ctx context.Context, runID string) (RetryResult, error) {
+	if runID == "" {
+		return RetryResult{}, errors.New("flow: Retry needs a run id")
+	}
+	var res RetryResult
+	err := r.c.callSigned(ctx, "retry run", http.MethodPost, "/v1/runs/"+url.PathEscape(runID)+"/retry",
+		map[string]any{"appId": r.c.appID}, &res)
+	var ae *apiError
+	if errors.As(err, &ae) && ae.status == http.StatusNotFound {
+		return RetryResult{}, nil
+	}
+	return res, err
+}
+
+// Delete deletes a run that has ended now, as its retention would later (POST
+// /v1/runs/{id}/delete): its state, files and index row. It is false for an
+// active run, or one that is not found.
+func (r Runs) Delete(ctx context.Context, runID string) (bool, error) {
+	if runID == "" {
+		return false, errors.New("flow: Delete needs a run id")
+	}
+	var res struct {
+		Deleted bool `json:"deleted"`
+	}
+	err := r.c.callSigned(ctx, "delete run", http.MethodPost, "/v1/runs/"+url.PathEscape(runID)+"/delete",
+		map[string]any{"appId": r.c.appID}, &res)
+	var ae *apiError
+	if errors.As(err, &ae) && ae.status == http.StatusNotFound {
+		return false, nil
+	}
+	return res.Deleted, err
+}
+
+// Functions pauses and resumes this app's functions. Get it with
+// Client.Functions.
+type Functions struct {
+	c *Client
+}
+
+// Functions returns the client's functions API.
+func (c *Client) Functions() Functions { return Functions{c: c} }
+
+// PauseResult says what Functions().Pause or Resume did.
+type PauseResult struct {
+	Paused bool `json:"paused"`
+	// Runs is how many of the function's runs were paused, or resumed.
+	Runs int `json:"runs"`
+}
+
+// Pause pauses one of this app's functions, as the dashboard does (POST
+// /v1/functions/{id}/pause): new runs are refused (or held, with
+// StartOpts.WhenPaused), and its active runs pause at their next step.
+func (f Functions) Pause(ctx context.Context, functionID string) (PauseResult, error) {
+	return f.set(ctx, functionID, "pause")
+}
+
+// Resume resumes a paused function and its paused runs (POST
+// /v1/functions/{id}/resume).
+func (f Functions) Resume(ctx context.Context, functionID string) (PauseResult, error) {
+	return f.set(ctx, functionID, "resume")
+}
+
+func (f Functions) set(ctx context.Context, functionID, action string) (PauseResult, error) {
+	if functionID == "" {
+		return PauseResult{}, fmt.Errorf("flow: %s needs a function id", action)
+	}
+	var res PauseResult
+	err := f.c.callSigned(ctx, "function "+action, http.MethodPost, "/v1/functions/"+url.PathEscape(functionID)+"/"+action,
+		map[string]any{"appId": f.c.appID}, &res)
 	return res, err
 }

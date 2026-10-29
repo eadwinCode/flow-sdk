@@ -169,6 +169,33 @@ export interface RunPage {
  */
 export type RunCounts = Record<RunStatus, number> & { since: number };
 
+/** One run in `flow.runs.get`: no index lag. */
+export interface RunDetail extends RunSummary {
+  /**
+   * For a failed run, how many times the call that failed it was tried (as the
+   * failure function's `attempts`); for any other run, how many times it was called.
+   */
+  attempts: number;
+  /** Why the run failed or was cancelled; null otherwise. */
+  error: SerializedError | null;
+  /** The event that started the run (for `flow.start`, its `data` is the start's). */
+  event: { id: string; name: string; data: Json; ts: number };
+}
+
+/** What `flow.runs.retry` gives back. */
+export interface RetryResult {
+  /** False when the run had not failed or been cancelled, or another run holds its singleton key now. */
+  retried: boolean;
+  reason?: "singleton";
+}
+
+/** What `flow.functions.pause` and `resume` give back. */
+export interface PauseResult {
+  paused: boolean;
+  /** How many of the function's runs were paused, or resumed. */
+  runs: number;
+}
+
 /** What `flow.runs.singleton` gives back: the active run for a key, or nulls. */
 export interface SingletonRun {
   runId: string | null;
