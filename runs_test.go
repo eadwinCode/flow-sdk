@@ -298,6 +298,22 @@ func TestRunsCancelNextNull(t *testing.T) {
 	}
 }
 
+func TestPauseCallsAgainWhileMore(t *testing.T) {
+	n := 0
+	srv, calls := fakeEngine(t, func(engineCall) (int, string) {
+		n++
+		if n == 1 {
+			return 200, `{"paused":true,"runs":500,"more":true}`
+		}
+		return 200, `{"paused":true,"runs":20,"more":false}`
+	})
+	c := newClient(t, ClientOpts{BaseURL: StrPtr(srv.URL)})
+	res, err := c.Functions().Pause(context.Background(), "fn")
+	if err != nil || res != (PauseResult{Paused: true, Runs: 520}) || len(*calls) != 2 {
+		t.Fatalf("pause = %+v, %v after %d calls", res, err, len(*calls))
+	}
+}
+
 func TestRunControl(t *testing.T) {
 	ctx := context.Background()
 	srv, calls := fakeEngine(t, func(call engineCall) (int, string) {

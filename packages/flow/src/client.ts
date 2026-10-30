@@ -176,9 +176,16 @@ export class Flow {
     const call = async (fn: string | FlowFunction, action: "pause" | "resume", env?: FlowEnv) => {
       if (!this.functionIdOf(fn)) throw new Error(`function ${action} needs a function id`);
       const path = `/v1/functions/${encodeURIComponent(this.functionIdOf(fn))}/${action}`;
-      const res = await this.callSigned("POST", path, { appId: this.id }, env);
-      if (!res.ok) throw failed(`function ${action}`, res);
-      return res.body as PauseResult;
+      // The engine stops after a while on a function with many runs, with `more`: the
+      // same call goes on, so it is made until there is no more.
+      let runs = 0;
+      for (;;) {
+        const res = await this.callSigned("POST", path, { appId: this.id }, env);
+        if (!res.ok) throw failed(`function ${action}`, res);
+        const page = res.body as PauseResult & { more?: boolean };
+        runs += page.runs;
+        if (!page.more) return { paused: page.paused, runs };
+      }
     };
     return {
       pause: (fn, options = {}) => call(fn, "pause", options.env),
@@ -259,7 +266,7 @@ export class Flow {
         const res = await this.callSigned("POST", `/v1/runs/${encodeURIComponent(runId)}/delete`, { appId: this.id }, options.env);
         if (res.status === 404) return { deleted: false };
         if (!res.ok) throw failed("runs delete", res);
-        return res.body as { deleted: boolean };
+        return res.body as { deleted: boolean; reason?: "kept" };
       },
     };
   }
@@ -650,9 +657,10 @@ export interface FlowRuns {
   retry(runId: string, options?: { env?: FlowEnv }): Promise<RetryResult>;
   /**
    * Deletes a run that has ended now, as its retention would later. `deleted` is false
-   * for an active run, or one that is not found.
+   * for an active run, one that is not found, and one kept for debugging (`reason:
+   * "kept"`).
    */
-  delete(runId: string, options?: { env?: FlowEnv }): Promise<{ deleted: boolean }>;
+  delete(runId: string, options?: { env?: FlowEnv }): Promise<{ deleted: boolean; reason?: "kept" }>;
 }
 
 /** `flow.functions`. On Workers, pass the handler's `env` if the keys live there. */

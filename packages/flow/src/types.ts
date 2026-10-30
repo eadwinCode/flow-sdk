@@ -184,9 +184,12 @@ export interface RunDetail extends RunSummary {
 
 /** What `flow.runs.retry` gives back. */
 export interface RetryResult {
-  /** False when the run had not failed or been cancelled, or another run holds its singleton key now. */
+  /**
+   * False when the run had not failed or been cancelled, its function is paused
+   * (`reason: "paused"`), or another run holds its singleton key now (`"singleton"`).
+   */
   retried: boolean;
-  reason?: "singleton";
+  reason?: "paused" | "singleton";
 }
 
 /** What `flow.functions.pause` and `resume` give back. */

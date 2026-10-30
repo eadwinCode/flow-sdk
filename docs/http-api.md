@@ -242,9 +242,10 @@ dashboard's Retry. It keeps its run ID, and its finished steps are not run again
 ```
 
 `retried` is `false` for a run that has not failed or been cancelled. With `reason:
-"singleton"`, another run holds its singleton key now. `404` for a run that is
-missing or another app's. `402` or `403`, as for a start, when the workspace may
-start no runs.
+"paused"`, its function is paused: resume it first. With `reason: "singleton"`,
+another run holds its singleton key now. `404` for a run that is missing or another
+app's. As a start: `402` or `403` when the workspace may start no runs, and it uses
+one of the plan's events a second (`429` past it).
 
 ## `POST /v1/runs/{runId}/delete`: delete a run that has ended
 
@@ -255,7 +256,8 @@ later: its state, its stored files and its row in the run index.
 { "deleted": true }
 ```
 
-`deleted` is `false` for an active run (cancel it first). The delete runs a moment
+`deleted` is `false` for an active run (cancel it first), and with `reason: "kept"`
+for a run someone keeps for debugging (the dashboard's Keep). The delete runs a moment
 after the answer, so `GET /v1/runs` may list the run for a few seconds more. `404` for
 a run that is missing or another app's.
 
@@ -264,7 +266,7 @@ a run that is missing or another app's.
 Body: `{}`. Pauses (or resumes) one of the app's functions, as the dashboard does.
 
 ```json
-{ "paused": true, "runs": 3 }
+{ "paused": true, "runs": 3, "more": false }
 ```
 
 - Pause: new runs are refused (`reason: "paused"`), or held with a start's
@@ -274,6 +276,11 @@ Body: `{}`. Pauses (or resumes) one of the app's functions, as the dashboard doe
 - `runs` is how many runs it paused or resumed. It finds them in the run index, which
   lags: a run held a moment before a resume checks its function itself, within 30
   seconds.
+- A function with many runs: the call stops after about 15 seconds with `more: true`.
+  Call it again to go on. The SDKs do this for you.
+- A held run takes its [throttle](flow-control.md) slot when it is resumed, not when
+  it was held, so held runs do not all start at once. Its singleton key is held from
+  the start, as for any run.
 - `404` for a function the app does not have.
 
 ## Realtime

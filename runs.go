@@ -318,8 +318,9 @@ type RunEvent struct {
 
 // RetryResult says what Runs().Retry did.
 type RetryResult struct {
-	// Retried is false when the run had not failed or been cancelled, or
-	// another run holds its singleton key now (Reason "singleton").
+	// Retried is false when the run had not failed or been cancelled, its
+	// function is paused (Reason "paused"), or another run holds its singleton
+	// key now (Reason "singleton").
 	Retried bool   `json:"retried"`
 	Reason  string `json:"reason,omitempty"`
 }
@@ -364,7 +365,8 @@ func (r Runs) Retry(ctx context.Context, runID string) (RetryResult, error) {
 
 // Delete deletes a run that has ended now, as its retention would later (POST
 // /v1/runs/{id}/delete): its state, files and index row. It is false for an
-// active run, or one that is not found.
+// active run, one that is not found, and one kept for debugging (the
+// dashboard's Keep).
 func (r Runs) Delete(ctx context.Context, runID string) (bool, error) {
 	if runID == "" {
 		return false, errors.New("flow: Delete needs a run id")
@@ -414,8 +416,23 @@ func (f Functions) set(ctx context.Context, functionID, action string) (PauseRes
 	if functionID == "" {
 		return PauseResult{}, fmt.Errorf("flow: %s needs a function id", action)
 	}
-	var res PauseResult
-	err := f.c.callSigned(ctx, "function "+action, http.MethodPost, "/v1/functions/"+url.PathEscape(functionID)+"/"+action,
-		map[string]any{"appId": f.c.appID}, &res)
-	return res, err
+	// The engine stops after a while on a function with many runs, with more:
+	// the same call goes on, so it is made until there is no more.
+	var total PauseResult
+	for {
+		var page struct {
+			PauseResult
+			More bool `json:"more"`
+		}
+		err := f.c.callSigned(ctx, "function "+action, http.MethodPost, "/v1/functions/"+url.PathEscape(functionID)+"/"+action,
+			map[string]any{"appId": f.c.appID}, &page)
+		if err != nil {
+			return total, err
+		}
+		total.Paused = page.Paused
+		total.Runs += page.Runs
+		if !page.More {
+			return total, nil
+		}
+	}
 }
