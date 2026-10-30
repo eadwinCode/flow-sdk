@@ -297,3 +297,104 @@ func TestRunsCancelNextNull(t *testing.T) {
 		t.Fatalf("result = %+v, err = %v", res, err)
 	}
 }
+
+func TestPauseCallsAgainWhileMore(t *testing.T) {
+	n := 0
+	srv, calls := fakeEngine(t, func(engineCall) (int, string) {
+		n++
+		if n == 1 {
+			return 200, `{"paused":true,"runs":500,"more":true}`
+		}
+		return 200, `{"paused":true,"runs":20,"more":false}`
+	})
+	c := newClient(t, ClientOpts{BaseURL: StrPtr(srv.URL)})
+	res, err := c.Functions().Pause(context.Background(), "fn")
+	if err != nil || res != (PauseResult{Paused: true, Runs: 520}) || len(*calls) != 2 {
+		t.Fatalf("pause = %+v, %v after %d calls", res, err, len(*calls))
+	}
+}
+
+func TestRunControl(t *testing.T) {
+	ctx := context.Background()
+	srv, calls := fakeEngine(t, func(call engineCall) (int, string) {
+		switch {
+		case strings.HasSuffix(call.path, "/start"):
+			return 200, `{"started":true,"runId":"run_1","eventId":"evt_1"}`
+		case strings.HasSuffix(call.path, "/pause"):
+			return 200, `{"paused":true,"runs":2}`
+		case strings.HasSuffix(call.path, "/resume"):
+			return 200, `{"paused":false,"runs":1}`
+		case call.path == "/v1/runs":
+			return 200, `{"items":[],"next":null}`
+		case strings.HasPrefix(call.path, "/v1/runs/run_gone"):
+			return 404, `{"error":"run run_gone not found","status":404}`
+		case strings.HasSuffix(call.path, "/delete"):
+			return 200, `{"deleted":true}`
+		case strings.HasSuffix(call.path, "/retry"):
+			return 200, `{"retried":false,"reason":"singleton"}`
+		default:
+			return 200, `{"id":"run_1","functionId":"fn","status":"failed","createdAt":1,"endedAt":2,"tags":{},` +
+				`"attempts":4,"error":{"name":"Error","message":"boom"},` +
+				`"event":{"id":"evt_1","name":"inngest/function.invoked","data":{"job":1},"ts":1}}`
+		}
+	})
+	c := newClient(t, ClientOpts{BaseURL: StrPtr(srv.URL)})
+
+	if _, err := c.Start(ctx, "fn", StartOpts{WhenPaused: "hold"}); err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := json.Marshal((*calls)[0].body); string(b) != `{"appId":"billing","whenPaused":"hold"}` {
+		t.Fatalf("start body = %s", b)
+	}
+	if _, err := c.Runs().List(ctx, ListRunsOpts{Function: "fn", Order: "oldest"}); err != nil {
+		t.Fatal(err)
+	}
+	if q := (*calls)[1].query.Encode(); q != "appId=billing&function=fn&order=oldest" {
+		t.Fatalf("list query = %s", q)
+	}
+
+	p, err := c.Functions().Pause(ctx, "fn")
+	if err != nil || p != (PauseResult{Paused: true, Runs: 2}) {
+		t.Fatalf("pause = %+v, %v", p, err)
+	}
+	r, err := c.Functions().Resume(ctx, "fn")
+	if err != nil || r != (PauseResult{Paused: false, Runs: 1}) {
+		t.Fatalf("resume = %+v, %v", r, err)
+	}
+	if got := (*calls)[2]; got.method != "POST" || got.path != "/v1/functions/fn/pause" || got.body["appId"] != "billing" {
+		t.Fatalf("pause call = %+v", got)
+	}
+
+	run, err := c.Runs().Get(ctx, "run_1")
+	if err != nil || run == nil || run.Status != "failed" || run.Attempts != 4 || run.Error.Message != "boom" ||
+		string(run.Event.Data) != `{"job":1}` {
+		t.Fatalf("get = %+v, %v", run, err)
+	}
+	if got := (*calls)[4]; got.method != "GET" || got.path != "/v1/runs/run_1" || got.query.Get("appId") != "billing" {
+		t.Fatalf("get call = %+v", got)
+	}
+	if run, err := c.Runs().Get(ctx, "run_gone"); run != nil || err != nil {
+		t.Fatalf("get of a missing run = %+v, %v", run, err)
+	}
+
+	res, err := c.Runs().Retry(ctx, "run_1")
+	if err != nil || res != (RetryResult{Retried: false, Reason: "singleton"}) {
+		t.Fatalf("retry = %+v, %v", res, err)
+	}
+	if got := (*calls)[6]; got.method != "POST" || got.path != "/v1/runs/run_1/retry" {
+		t.Fatalf("retry call = %+v", got)
+	}
+	if res, err := c.Runs().Retry(ctx, "run_gone"); res.Retried || err != nil {
+		t.Fatalf("retry of a missing run = %+v, %v", res, err)
+	}
+
+	if ok, err := c.Runs().Delete(ctx, "run_1"); !ok || err != nil {
+		t.Fatalf("delete = %v, %v", ok, err)
+	}
+	if got := (*calls)[len(*calls)-1]; got.method != "POST" || got.path != "/v1/runs/run_1/delete" {
+		t.Fatalf("delete call = %+v", got)
+	}
+	if ok, err := c.Runs().Delete(ctx, "run_gone"); ok || err != nil {
+		t.Fatalf("delete of a missing run = %v, %v", ok, err)
+	}
+}

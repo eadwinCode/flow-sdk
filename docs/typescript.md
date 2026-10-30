@@ -145,7 +145,7 @@ Sends one event or a list of up to 100. Gives back `{ ids, status }`. Throws
 `flow.send needs an event key (eventKey or FLOW_EVENT_KEY)` without a key. It does
 not retry. See [Events](events.md).
 
-## `flow.start(fn, { data?, id?, user?, env }?)`
+## `flow.start(fn, { data?, id?, user?, whenPaused?, env }?)`
 
 Starts a run of one function now. `fn` is a function from `createFunction`, or its
 ID. Gives back:
@@ -156,6 +156,10 @@ ID. Gives back:
 { started: false, reason: "paused" | "not_found" }
 ```
 
+A paused function refuses the start (`reason: "paused"`). With `whenPaused: "hold"`
+(v0.8.0), it takes the run anyway: the run waits, paused, and starts when the function
+is resumed.
+
 It does not throw when the run did not start. It throws `start failed (<status>): <engine error>`
 on any other answer (for example `429` when the plan's events a second are used up).
 See [Start a run directly](flow-control.md#start-a-run-directly).
@@ -164,14 +168,17 @@ See [Start a run directly](flow-control.md#start-a-run-directly).
 
 | Method | Gives back |
 | --- | --- |
-| `list({ function?, status?, tags?, limit?, before?, env? }?)` | `{ items, next }`. Each item is `{ id, functionId, status, createdAt, endedAt, tags }`, newest first. Pass `next` as `before` for the next page. |
+| `list({ function?, status?, tags?, limit?, before?, order?, env? }?)` | `{ items, next }`. Each item is `{ id, functionId, status, createdAt, endedAt, tags }`, newest first (`order: "oldest"`: oldest first). Pass `next` as `before` for the next page. |
 | `counts({ function, env? })` | How many runs in each status, and `since` |
 | `singleton(fn, key, { env }?)` | `{ runId, status }` of the active run that holds that singleton key, or nulls |
 | `cancel({ runId } \| { function, singletonKey } \| { function, tag, status?, cursor? }, { env }?)` | `{ cancelled, notActive, more, next }` |
+| `get(runId, { env }?)` | v0.8.0. The run as in `list`, plus `attempts`, `error` and the `event` that started it. `null` when there is no such run. |
+| `delete(runId, { env }?)` | v0.8.0. Deletes a run that has ended now, as its retention would later. `{ deleted }`: false for an active run, or one that is not found. |
+| `retry(runId, { env }?)` | v0.8.0. Retries a failed or cancelled run from where it stopped, under the same ID. `{ retried, reason? }`: `retried` is false for a run that has not ended that way, or is not found. |
 
 - `function` is a function from `createFunction`, or its ID. `tags` needs `function`.
 - `list` and `counts` read an index that lags the runs by a few seconds. `singleton`,
-  and `cancel` by run ID or singleton key, do not.
+  `get`, `retry`, and `cancel` by run ID or singleton key, do not.
 - A run that had ended goes in `notActive`: that is not an error. A cancel by `tag`
   does up to 500 runs, oldest first; `more: true` means call again with `next` as
   `cursor`.
@@ -183,6 +190,18 @@ See [Start a run directly](flow-control.md#start-a-run-directly).
 
 See the [HTTP API](http-api.md#get-v1runs-list-runs) for the statuses and every
 field.
+
+## `flow.functions`
+
+v0.8.0. Pauses and resumes the app's functions, as the dashboard does.
+
+| Method | Gives back |
+| --- | --- |
+| `pause(fn, { env }?)` | `{ paused: true, runs }`. New runs are refused (or held, with `start`'s `whenPaused: "hold"`), and the function's active runs pause at their next step. `runs` is how many it paused. |
+| `resume(fn, { env }?)` | `{ paused: false, runs }`. The function and its paused runs go on. |
+
+Each throws `function pause failed (<status>): ...` (or `resume`) on an error answer:
+`404` for a function the app does not have.
 
 ## `flow.realtime`
 

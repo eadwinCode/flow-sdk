@@ -1,5 +1,29 @@
 # Changelog
 
+## Unreleased
+
+Calls so an app can run its own queue tools on Flow: pause a function, see a failed
+run, and retry it. Each needs an engine that has the new routes; with an older engine
+they fail with `404`.
+
+- **Pause and resume a function.** TypeScript `flow.functions.pause(fn)` and
+  `resume(fn)`, Go `client.Functions().Pause(ctx, id)` and `Resume`. As the dashboard's
+  Pause: new runs are refused, and active runs pause at their next step. Routes:
+  `POST /v1/functions/{id}/pause` and `/resume`.
+- **Hold a start while paused.** `flow.start(fn, { whenPaused: "hold" })`, Go
+  `StartOpts.WhenPaused: "hold"`: a paused function takes the run, which waits paused
+  and starts on resume. The default stays `"refuse"`.
+- **One run, and retry.** TypeScript `flow.runs.get(runId)` and `retry(runId)`, Go
+  `client.Runs().Get` and `Retry`. `get` gives the run's status, tags, attempts, error
+  and the event that started it, with no index lag. `retry` is the dashboard's Retry:
+  a failed or cancelled run goes on from where it stopped, under the same ID. Routes:
+  `GET /v1/runs/{id}` and `POST /v1/runs/{id}/retry`.
+- **Delete a run that has ended.** TypeScript `flow.runs.delete(runId)`, Go
+  `client.Runs().Delete`: as its retention would later, now. Route:
+  `POST /v1/runs/{id}/delete`.
+- **List oldest first.** `flow.runs.list({ order: "oldest" })`, Go
+  `ListRunsOpts.Order: "oldest"`.
+
 ## v0.7.0
 
 New calls so an app can run a job queue, an event bus and live output streams on

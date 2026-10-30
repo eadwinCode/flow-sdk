@@ -223,6 +223,87 @@ describe("flow.runs", () => {
   });
 });
 
+describe("run control", () => {
+  it("start sends whenPaused", async () => {
+    const { flow, calls } = client(() => Response.json({ started: true, runId: "run_1", eventId: "evt_1" }));
+    await flow.start("fn", { whenPaused: "hold" });
+    expect(calls[0]!.body).toEqual({ appId: "shop", whenPaused: "hold" });
+  });
+
+  it("list sends order", async () => {
+    const { flow, calls } = client(() => Response.json({ items: [], next: null }));
+    await flow.runs.list({ function: "fn", order: "oldest" });
+    expect(calls[0]!.url).toBe(`${BASE}/v1/runs?function=fn&order=oldest&appId=shop`);
+  });
+
+  it("functions.pause and resume post to the function's routes", async () => {
+    const { flow, calls } = client((url) => Response.json({ paused: url.endsWith("/pause"), runs: 2 }));
+    expect(await flow.functions.pause("fn")).toEqual({ paused: true, runs: 2 });
+    expect(await flow.functions.resume("fn")).toEqual({ paused: false, runs: 2 });
+    expect(calls.map((c) => [c.method, c.url, c.body])).toEqual([
+      ["POST", `${BASE}/v1/functions/fn/pause`, { appId: "shop" }],
+      ["POST", `${BASE}/v1/functions/fn/resume`, { appId: "shop" }],
+    ]);
+  });
+
+  it("functions.pause calls again while the engine says more, and adds up the runs", async () => {
+    const pages = [{ paused: true, runs: 500, more: true }, { paused: true, runs: 20, more: false }];
+    let i = 0;
+    const { flow, calls } = client(() => Response.json(pages[i++]));
+    expect(await flow.functions.pause("fn")).toEqual({ paused: true, runs: 520 });
+    expect(calls).toHaveLength(2);
+  });
+
+  it("functions.pause throws with the engine's error", async () => {
+    const { flow } = client(() => Response.json({ error: "function fn not found", status: 404 }, { status: 404 }));
+    await expect(flow.functions.pause("fn")).rejects.toThrow("function pause failed (404)");
+  });
+
+  it("runs.get gives the run, or null for a 404", async () => {
+    const run = {
+      id: "run_1", functionId: "fn", status: "failed", createdAt: 1, endedAt: 2, tags: {},
+      attempts: 4, error: { name: "Error", message: "boom" }, event: { id: "evt_1", name: "inngest/function.invoked", data: { job: 1 }, ts: 1 },
+    };
+    let missing = false;
+    const { flow, calls } = client(() => (missing ? Response.json({ error: "run run_1 not found", status: 404 }, { status: 404 }) : Response.json(run)));
+    expect(await flow.runs.get("run_1")).toEqual(run);
+    expect(calls[0]).toMatchObject({ method: "GET", url: `${BASE}/v1/runs/run_1?appId=shop` });
+    missing = true;
+    expect(await flow.runs.get("run_1")).toBeNull();
+  });
+
+  it("runs.retry posts to the run's retry route; a 404 is not retried", async () => {
+    let missing = false;
+    const { flow, calls } = client(() =>
+      missing ? Response.json({ error: "run run_1 not found", status: 404 }, { status: 404 }) : Response.json({ retried: false, reason: "singleton" }),
+    );
+    expect(await flow.runs.retry("run_1")).toEqual({ retried: false, reason: "singleton" });
+    expect(calls[0]).toMatchObject({ method: "POST", url: `${BASE}/v1/runs/run_1/retry`, body: { appId: "shop" } });
+    missing = true;
+    expect(await flow.runs.retry("run_1")).toEqual({ retried: false });
+  });
+
+  it("refuses an empty run or function ID before any call", async () => {
+    const { flow, calls } = client(() => Response.json({}));
+    await expect(flow.runs.get("")).rejects.toThrow("runs get needs a run id");
+    await expect(flow.runs.retry("")).rejects.toThrow("runs retry needs a run id");
+    await expect(flow.runs.delete("")).rejects.toThrow("runs delete needs a run id");
+    await expect(flow.functions.pause("")).rejects.toThrow("function pause needs a function id");
+    expect(calls).toHaveLength(0);
+  });
+
+  it("runs.delete posts to the run's delete route; a 404 is not deleted", async () => {
+    let missing = false;
+    const { flow, calls } = client(() =>
+      missing ? Response.json({ error: "run run_1 not found", status: 404 }, { status: 404 }) : Response.json({ deleted: true }),
+    );
+    expect(await flow.runs.delete("run_1")).toEqual({ deleted: true });
+    expect(calls[0]).toMatchObject({ method: "POST", url: `${BASE}/v1/runs/run_1/delete`, body: { appId: "shop" } });
+    missing = true;
+    expect(await flow.runs.delete("run_1")).toEqual({ deleted: false });
+  });
+});
+
 describe("tags", () => {
   it("go to the manifest as given", () => {
     const flow = new Flow({ id: "shop" });
