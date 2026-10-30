@@ -33,7 +33,9 @@ type StartResult struct {
 	EventID string `json:"eventId,omitempty"`
 	// Existed is true when a run with this StartOpts.ID was there already.
 	Existed bool `json:"existed,omitempty"`
-	// Reason says why no run started: "singleton", "paused" or "not_found".
+	// Reason says why no run started: "singleton", "paused", "not_found", or
+	// "deleted": a run with this StartOpts.ID was just deleted and is not gone
+	// yet, so try again in a few seconds.
 	Reason string `json:"reason,omitempty"`
 	// ActiveRunID is the run that holds the singleton when Reason is
 	// "singleton". It is empty if that run ended in between.
@@ -416,23 +418,30 @@ func (f Functions) set(ctx context.Context, functionID, action string) (PauseRes
 	if functionID == "" {
 		return PauseResult{}, fmt.Errorf("flow: %s needs a function id", action)
 	}
-	// The engine stops after a while on a function with many runs, with more:
-	// the same call goes on, so it is made until there is no more.
+	// The engine stops after a while on a function with many runs, with more and
+	// a next cursor: the call is made again from the cursor until there is no more.
 	var total PauseResult
+	cursor := ""
 	for {
 		var page struct {
 			PauseResult
-			More bool `json:"more"`
+			More bool   `json:"more"`
+			Next string `json:"next"`
+		}
+		body := map[string]any{"appId": f.c.appID}
+		if cursor != "" {
+			body["cursor"] = cursor
 		}
 		err := f.c.callSigned(ctx, "function "+action, http.MethodPost, "/v1/functions/"+url.PathEscape(functionID)+"/"+action,
-			map[string]any{"appId": f.c.appID}, &page)
+			body, &page)
 		if err != nil {
 			return total, err
 		}
 		total.Paused = page.Paused
 		total.Runs += page.Runs
-		if !page.More {
+		if !page.More || page.Next == "" {
 			return total, nil
 		}
+		cursor = page.Next
 	}
 }

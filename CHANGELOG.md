@@ -23,6 +23,11 @@ they fail with `404`.
   `POST /v1/runs/{id}/delete`.
 - **List oldest first.** `flow.runs.list({ order: "oldest" })`, Go
   `ListRunsOpts.Order: "oldest"`.
+- **A start right after a delete.** A start with the `id` of a run just deleted now
+  answers `reason: "deleted"` until the run is gone (a few seconds), not a start that
+  never runs.
+- Pausing, resuming and deleting need an app's own signing key. A shared key from
+  before gets `403`.
 
 ## v0.7.0
 
