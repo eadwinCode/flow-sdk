@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v0.8.0
 
 Calls so an app can run its own queue tools on Flow: pause a function, see a failed
 run, and retry it. Each needs an engine that has the new routes; with an older engine
