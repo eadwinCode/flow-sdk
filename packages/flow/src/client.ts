@@ -176,15 +176,17 @@ export class Flow {
     const call = async (fn: string | FlowFunction, action: "pause" | "resume", env?: FlowEnv) => {
       if (!this.functionIdOf(fn)) throw new Error(`function ${action} needs a function id`);
       const path = `/v1/functions/${encodeURIComponent(this.functionIdOf(fn))}/${action}`;
-      // The engine stops after a while on a function with many runs, with `more`: the
-      // same call goes on, so it is made until there is no more.
+      // The engine stops after a while on a function with many runs, with `more` and a
+      // `next` cursor: the call is made again from the cursor until there is no more.
       let runs = 0;
+      let cursor: string | undefined;
       for (;;) {
-        const res = await this.callSigned("POST", path, { appId: this.id }, env);
+        const res = await this.callSigned("POST", path, { appId: this.id, ...(cursor ? { cursor } : {}) }, env);
         if (!res.ok) throw failed(`function ${action}`, res);
-        const page = res.body as PauseResult & { more?: boolean };
+        const page = res.body as PauseResult & { more?: boolean; next?: string };
         runs += page.runs;
-        if (!page.more) return { paused: page.paused, runs };
+        if (!page.more || !page.next) return { paused: page.paused, runs };
+        cursor = page.next;
       }
     };
     return {

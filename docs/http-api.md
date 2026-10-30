@@ -108,6 +108,7 @@ Answers:
 | `200` | `{"started":false,"reason":"singleton","activeRunId":"run_..."}` | A run with the same singleton key is active. `activeRunId` is `null` if it ended in between. |
 | `200` | `{"started":false,"reason":"paused"}` | The function is paused. |
 | `200` | `{"started":false,"reason":"not_found"}` | The app has no function with that ID. |
+| `200` | `{"started":false,"reason":"deleted"}` | A run with this `id` was just deleted and is not gone yet. Try again in a few seconds. |
 | `400` | `{"error":"...","status":400}` | The body is not JSON, `id` is not 1 to 256 characters, or `whenPaused` is not `"refuse"` or `"hold"`. |
 | `402`, `403` | as for [`POST /e`](#post-e-send-events) | The account's money is used up, or the workspace is suspended. |
 | `413` | `{"error":"...","status":413}` | The event is over 1 MB, or the body over 2 MB. |
@@ -258,15 +259,21 @@ later: its state, its stored files and its row in the run index.
 
 `deleted` is `false` for an active run (cancel it first), and with `reason: "kept"`
 for a run someone keeps for debugging (the dashboard's Keep). The delete runs a moment
-after the answer, so `GET /v1/runs` may list the run for a few seconds more. `404` for
-a run that is missing or another app's.
+after the answer, so `GET /v1/runs` may list the run for a few seconds more. Until it
+has run, a start with the same `id` answers `reason: "deleted"`. `404` for a run that
+is missing or another app's.
+
+It needs a key of one app: a shared key from before gets `403`. Each delete is
+recorded with the key and the app.
 
 ## `POST /v1/functions/{functionId}/pause` and `/resume`
 
-Body: `{}`. Pauses (or resumes) one of the app's functions, as the dashboard does.
+Body: `{}`, or `{ "cursor": "..." }` to go on. Pauses (or resumes) one of the app's
+functions, as the dashboard does.
 
 ```json
 { "paused": true, "runs": 3, "more": false }
+{ "paused": true, "runs": 500, "more": true, "next": "run_..." }
 ```
 
 - Pause: new runs are refused (`reason: "paused"`), or held with a start's
@@ -275,9 +282,12 @@ Body: `{}`. Pauses (or resumes) one of the app's functions, as the dashboard doe
 - Resume: the function takes runs again, and its paused runs go on, held ones too.
 - `runs` is how many runs it paused or resumed. It finds them in the run index, which
   lags: a run held a moment before a resume checks its function itself, within 30
-  seconds.
-- A function with many runs: the call stops after about 15 seconds with `more: true`.
-  Call it again to go on. The SDKs do this for you.
+  seconds. A run held for a long time checks less often, at most every 10 minutes.
+- A function with many runs: the call stops after about 15 seconds with `more: true`
+  and `next`. Call it again with `cursor` set to `next` to go on. The SDKs do this
+  for you.
+- It needs a key of one app: a shared key from before gets `403`. Each pause and
+  resume is recorded with the key and the app.
 - A held run takes its [throttle](flow-control.md) slot when it is resumed, not when
   it was held, so held runs do not all start at once. Its singleton key is held from
   the start, as for any run.

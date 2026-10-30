@@ -137,7 +137,11 @@ export type StartResult =
       /** The run that holds the singleton, or null when it ended in between. */
       activeRunId: string | null;
     }
-  | { started: false; reason: "paused" | "not_found" };
+  /**
+   * `deleted`: a run with this `id` was just deleted and is not gone yet; try again in
+   * a few seconds.
+   */
+  | { started: false; reason: "paused" | "not_found" | "deleted" };
 
 /** Statuses of an active run. */
 export type ActiveRunStatus = "queued" | "running" | "sleeping" | "waiting" | "waiting_for_app" | "paused";

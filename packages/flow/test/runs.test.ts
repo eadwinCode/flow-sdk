@@ -246,12 +246,14 @@ describe("run control", () => {
     ]);
   });
 
-  it("functions.pause calls again while the engine says more, and adds up the runs", async () => {
-    const pages = [{ paused: true, runs: 500, more: true }, { paused: true, runs: 20, more: false }];
+  it("functions.pause calls again from the cursor while the engine says more, and adds up the runs", async () => {
+    const pages = [{ paused: true, runs: 500, more: true, next: "run_500" }, { paused: true, runs: 20, more: false }];
     let i = 0;
     const { flow, calls } = client(() => Response.json(pages[i++]));
     expect(await flow.functions.pause("fn")).toEqual({ paused: true, runs: 520 });
     expect(calls).toHaveLength(2);
+    expect((calls[0]!.body as { cursor?: string }).cursor).toBeUndefined();
+    expect((calls[1]!.body as { cursor?: string }).cursor).toBe("run_500");
   });
 
   it("functions.pause throws with the engine's error", async () => {
