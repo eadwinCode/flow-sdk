@@ -60,6 +60,41 @@ Runs, apps, keys and users are kept between starts. To start over, run
 
 ## Point your app at it
 
+There are two ways: with no keys (quickest), or with keys, as in production.
+
+### With no keys
+
+The local engine runs in **local mode** (`bun run dev` and the Docker image turn it
+on with `FLOW_LOCAL_DEV=1`). In local mode the engine takes a sync, an event or an
+app's call that has **no key**, and puts it in the built-in workspace, the one your
+local login is an Owner of. So you need no **Add app**, no signing key and no event
+key:
+
+```bash
+FLOW_BASE_URL=http://127.0.0.1:8787
+FLOW_DEV=1
+```
+
+1. Start your app. Its sync at start adds it to the dashboard's **Apps** page, with
+   its functions. The engine makes a signing key for the app and signs its calls
+   with it; with `FLOW_DEV=1` your app does not check them.
+2. Send an event to `http://127.0.0.1:8787/e` with no key (with curl, `flow.send()`
+   or `client.Send()`), and watch the run in the dashboard.
+
+The app's URL is the one in its sync, so the engine must reach your app at the
+address the SDK sees (see [Syncing while you work](#syncing-while-you-work)). For
+Docker, where that is not true, use **Change URL** on the Apps page or the steps with
+keys below.
+
+A key that you do send is still checked: a wrong key gets `401`, as in production.
+
+> This needs an SDK newer than v0.8.0 (see the [changelog](https://github.com/eadwinCode/flow-sdk/blob/main/CHANGELOG.md)). v0.8.0 and
+> before still ask for `FLOW_SIGNING_KEY` and `FLOW_EVENT_KEY`: use the steps with keys below.
+
+### With keys, as in production
+
+Use this to test your app as it will run in production, with the signature check on.
+
 1. In the local dashboard, **Apps**, then **Add app**. **Generate** a signing key
    and an event key, and copy them.
 2. Start your app with:
@@ -193,6 +228,8 @@ your functions.
 | Add app says `app url must be https` | The host is not allowed over plain `http`. `bun run dev` allows `localhost` and `127.0.0.1`; add others with `FLOW_ALLOW_HTTP_HOSTS`. The Docker image allows any host. |
 | Add app says the app did not answer | The engine can not reach the URL you typed. From inside Docker, `localhost` is the container itself: use `host.docker.internal` or the compose service name. |
 | Steps fail after a `curl -X PUT` sync, and the app shows **Down** | Under Docker, a `PUT` saved `127.0.0.1` as the app's URL. Send it again with the engine's address in the `Host` header, or use **Resync**. |
+| The app logs `sync needs a signing key` or `flow.send needs an event key` with `FLOW_DEV=1` | Your SDK is too old for keyless local mode. Use the steps [with keys](#with-keys-as-in-production). |
+| A sync or event with no key gets `401` | The engine is not in local mode (it needs `FLOW_LOCAL_DEV=1`; `bun run dev` and the Docker image set it), or it is the hosted engine, which always needs keys. |
 | Every call to your app gets `401` | `FLOW_SIGNING_KEY` is not the key from the **local** dashboard. Each engine has its own keys. |
 | Sending an event gives `401 invalid event key` | Use an event key from the local dashboard, and send it to `http://127.0.0.1:8787/e`. |
 | The app logs `the sync failed (400): invalid url` at start | The engine does not know the app's URL yet. Add the app (Connect), or sync once with `curl -X PUT <app-url>`. |

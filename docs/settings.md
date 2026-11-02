@@ -39,7 +39,9 @@ sync, realtime, and loading a run's state when it is over 4 MB.
 
 **`FLOW_DEV=1`** turns off the signature check: the endpoint takes unsigned calls.
 For a quick local test only. Never on a public app: anyone could start your
-functions.
+functions. With a [local engine](local-dev.md#with-no-keys), it also lets the app run
+with no `FLOW_SIGNING_KEY` and no `FLOW_EVENT_KEY`: the local engine takes its sync,
+events and calls with no key.
 
 ## Where the SDK looks
 

@@ -265,13 +265,12 @@ func TestSyncAtBootOff(t *testing.T) {
 		t.Fatal(err)
 	}
 	c.Serve()
-	// Without a signing key (dev mode) it does nothing either.
-	dev, err := NewClient(ClientOpts{AppID: "billing", SigningKey: StrPtr(""), BaseURL: StrPtr(e.URL), Dev: BoolPtr(true)})
+	// Without a signing key (and not in dev mode) it does nothing either.
+	nokey, err := NewClient(ClientOpts{AppID: "billing", SigningKey: StrPtr(""), BaseURL: StrPtr(e.URL), NoSyncOnBoot: true})
 	if err != nil {
 		t.Fatal(err)
 	}
-	dev.Serve()
-	if got, _ := dev.checkSync(context.Background()); got != bootNoKey {
+	if got, _ := nokey.checkSync(context.Background()); got != bootNoKey {
 		t.Fatalf("got %s", got)
 	}
 	time.Sleep(50 * time.Millisecond)
@@ -575,5 +574,27 @@ func TestBootDelayAndLateFunctions(t *testing.T) {
 	e.mu.Unlock()
 	if len(fns) != 2 {
 		t.Fatalf("the PUT has %d functions, want 2", len(fns))
+	}
+}
+
+// Dev mode with no key syncs with no bearer: a local engine (local mode) takes it.
+func TestSyncAtBootDevNoKey(t *testing.T) {
+	e := newBootEngine(t, nil, nil)
+	dev, err := NewClient(ClientOpts{AppID: "billing", SigningKey: StrPtr(""), BaseURL: StrPtr(e.URL), Dev: BoolPtr(true), NoSyncOnBoot: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := dev.checkSync(context.Background()); got != bootSynced {
+		t.Fatalf("got %s", got)
+	}
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if len(e.calls) != 2 {
+		t.Fatalf("calls = %v", e.calls)
+	}
+	for _, call := range e.calls {
+		if call.auth != "" {
+			t.Fatalf("%s sent Authorization %q", call.method, call.auth)
+		}
 	}
 }

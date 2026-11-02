@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- **Local dev with no keys.** With `FLOW_DEV=1` and no keys, the app now syncs, sends
+  events, loads big run state and calls `/v1/...` with no key, where it used to refuse
+  or skip. A local engine in local mode (`FLOW_LOCAL_DEV=1`, set by `bun run dev` and
+  the Docker image) takes these calls and adds the app to its built-in workspace. Any
+  other engine still answers `401`. Nothing changes when a key is set, or without
+  `FLOW_DEV=1`. See [Local development](docs/local-dev.md#with-no-keys).
+
 ## v0.8.0
 
 Calls so an app can run its own queue tools on Flow: pause a function, see a failed

@@ -401,7 +401,8 @@ func (c *Client) SendMany(ctx context.Context, events []Event) ([]string, error)
 }
 
 func (c *Client) send(ctx context.Context, payload any) ([]string, error) {
-	if c.eventKey == "" {
+	// Dev mode with no key sends with none: a local engine (local mode) takes it.
+	if c.eventKey == "" && !c.dev {
 		return nil, errors.New("flow: no event key (set FLOW_EVENT_KEY or ClientOpts.EventKey)")
 	}
 	body, err := json.Marshal(payload)
@@ -413,7 +414,9 @@ func (c *Client) send(ctx context.Context, payload any) ([]string, error) {
 		return nil, err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+c.eventKey)
+	if c.eventKey != "" {
+		req.Header.Set("Authorization", "Bearer "+c.eventKey)
+	}
 	status, b, err := c.do(req)
 	if err != nil {
 		return nil, err

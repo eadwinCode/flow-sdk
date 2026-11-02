@@ -148,8 +148,9 @@ type syncCheck struct {
 // and the engine keeps the URL it has. It logs what went wrong, and returns
 // what it did and when to check again (0: stop).
 func (c *Client) checkSync(ctx context.Context) (string, time.Duration) {
-	// Without a key there is nothing to sign with (dev mode).
-	if c.signingKey == "" {
+	// Without a key there is nothing to sign with. Dev mode checks with no key:
+	// a local engine (local mode) takes it, any other says 401 and it is logged.
+	if c.signingKey == "" && !c.dev {
 		return bootNoKey, 0
 	}
 	prefix := "flow: sync check of app " + c.appID

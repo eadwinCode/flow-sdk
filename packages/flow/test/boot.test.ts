@@ -232,12 +232,15 @@ describe("sync at boot on Node", () => {
     }
   });
 
-  it("does nothing without a signing key (dev mode)", async () => {
+  it("syncs with no key in dev mode, for a local engine", async () => {
     const e = engine();
     const flow = new Flow({ id: "shop", isDev: true, baseUrl: ENGINE, fetch: e.fetch });
     await serve({ client: flow, functions: [] })(new Request(APP_URL));
     await new Promise((r) => setTimeout(r, 10));
-    expect(e.calls).toHaveLength(0);
+    expect(e.calls.map((c) => [c.method, c.auth])).toEqual([
+      ["GET", undefined],
+      ["PUT", undefined],
+    ]);
   });
 });
 

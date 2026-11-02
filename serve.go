@@ -214,12 +214,16 @@ func (c *Client) run(w http.ResponseWriter, r *http.Request, req *core.InvokeReq
 // It returns an error unless every page loaded, so the function never runs
 // with part of its memo.
 func (c *Client) loadState(ctx context.Context, runID string) (map[string]core.MemoEntry, []json.RawMessage, error) {
-	if c.signingKey == "" {
+	// Dev mode with no key: sent with none, which only a local engine takes (local mode).
+	bearer := ""
+	if c.signingKey != "" {
+		b, err := signingKeyBearer(c.signingKey)
+		if err != nil {
+			return nil, nil, err
+		}
+		bearer = b
+	} else if !c.dev {
 		return nil, nil, errors.New("flow: no signing key to load the run state (set FLOW_SIGNING_KEY)")
-	}
-	bearer, err := signingKeyBearer(c.signingKey)
-	if err != nil {
-		return nil, nil, err
 	}
 	base := c.baseURL + "/runs/" + url.PathEscape(runID) + "/state"
 	memo := map[string]core.MemoEntry{}
@@ -257,7 +261,9 @@ func (c *Client) getStatePage(ctx context.Context, u, bearer string) (*core.RunS
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("Authorization", "Bearer "+bearer)
+	if bearer != "" {
+		req.Header.Set("Authorization", "Bearer "+bearer)
+	}
 	res, err := c.http.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("flow: loading the run state failed: %w", err)
