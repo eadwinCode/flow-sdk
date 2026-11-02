@@ -148,8 +148,9 @@ type syncCheck struct {
 // and the engine keeps the URL it has. It logs what went wrong, and returns
 // what it did and when to check again (0: stop).
 func (c *Client) checkSync(ctx context.Context) (string, time.Duration) {
-	// Without a key there is nothing to sign with (dev mode).
-	if c.signingKey == "" {
+	// Without a key there is nothing to sign with. Dev mode checks with no key:
+	// a local engine (local mode) takes it, any other says 401 and it is logged.
+	if c.signingKey == "" && !c.dev {
 		return bootNoKey, 0
 	}
 	prefix := "flow: sync check of app " + c.appID
@@ -173,6 +174,11 @@ func (c *Client) checkSync(ctx context.Context) (string, time.Duration) {
 		log.Printf("%s: the engine has no sync check (404): an older engine, or check FLOW_BASE_URL. "+
 			"Until then this app syncs only on PUT or Resync; checking again in 1 hour", prefix)
 		return bootFailed, notFoundCheck
+	}
+	if status == http.StatusUnauthorized && c.signingKey == "" && c.fallbackKey == "" {
+		// Dev mode with no key, and not a local engine: asking again will not help.
+		log.Printf("%s: the engine wants a key (401). With FLOW_DEV=1 and no keys, only a local engine (bun run dev, the dev Docker image) takes calls: point FLOW_BASE_URL at it, or set FLOW_SIGNING_KEY. Not checking again", prefix)
+		return bootNoKey, 0
 	}
 	if status != http.StatusOK {
 		log.Printf("%s: the check failed (%d): %s", prefix, status, engineError(body))

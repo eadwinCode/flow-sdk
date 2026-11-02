@@ -50,7 +50,8 @@ export interface ServeOptions {
    * the background), the app checks the engine's copy of its manifest and syncs when it
    * changed, so a deploy needs no Resync. Then it checks again every `checkEveryMs` the
    * engine gives (5 min): a timer on Node, the first request after that time on Workers.
-   * `false` turns all of it off. Needs the signing key; without one it does nothing.
+   * `false` turns all of it off. Needs the signing key; without one it does nothing,
+   * except in dev mode, where it checks with no key (for a local engine).
    */
   syncOnBoot?: boolean;
 }
@@ -444,9 +445,10 @@ const MAX_STATE_PAGES = 1000;
 async function loadState(runId: string, s: FlowSettings): Promise<{ memo: Record<string, MemoEntry>; events: FlowEvent[] }> {
   if (typeof runId !== "string" || runId.length === 0) throw new Error("the invoke request has no runId");
   const headers: Record<string, string> = {};
-  // The engine's state API always needs the key, also in dev mode (same as the Go SDK).
-  if (!s.signingKey) throw new Error("loading the run state needs a signing key: set FLOW_SIGNING_KEY");
-  headers.Authorization = `Bearer ${await signingKeyBearer(s.signingKey)}`;
+  // Dev mode with no key: sent with none, which only a local engine takes (local mode).
+  const key = s.signingKey || s.signingKeyFallback;
+  if (key) headers.Authorization = `Bearer ${await signingKeyBearer(key)}`;
+  else if (!s.isDev) throw new Error("loading the run state needs a signing key: set FLOW_SIGNING_KEY");
 
   const base = `${trimSlash(s.baseUrl)}/runs/${encodeURIComponent(runId)}/state`;
   const memo: Record<string, MemoEntry> = {};
@@ -484,7 +486,8 @@ async function loadState(runId: string, s: FlowSettings): Promise<{ memo: Record
 }
 
 async function handleSync(request: Request, s: FlowSettings, functions: FlowFunction[], hash: string): Promise<Response> {
-  if (!s.signingKey) {
+  // Dev mode with no key syncs with none: a local engine (local mode) takes it.
+  if (!s.signingKey && !s.isDev) {
     return errorResponse(500, { name: "NoSigningKey", message: "sync needs a signing key: set FLOW_SIGNING_KEY" });
   }
   const manifest = { ...buildManifest(s.appId, serveUrl(request), functions), manifestHash: hash };
@@ -516,10 +519,12 @@ async function putManifest(s: FlowSettings, manifest: unknown): Promise<Response
 /**
  * Fetches from the engine with the signing key as bearer. On a 401 it tries the
  * fallback key, as the other calls to the engine do, so a sync still works while the
- * keys are being rotated.
+ * keys are being rotated. In dev mode with no key it sends none (a local engine in
+ * local mode takes it).
  */
 async function fetchWithKeys(s: FlowSettings, url: string, init: { method: string; headers?: Record<string, string>; body?: string }): Promise<Response> {
   const keys = [s.signingKey, s.signingKeyFallback].filter((k): k is string => !!k);
+  if (keys.length === 0 && s.isDev) return s.fetch(url, init);
   let response: Response | undefined;
   for (const [i, key] of keys.entries()) {
     response = await s.fetch(url, { ...init, headers: { ...init.headers, Authorization: `Bearer ${await signingKeyBearer(key)}` } });
@@ -576,8 +581,9 @@ function heartbeatDelay(checkEveryMs: unknown): number | undefined {
  * Logs what went wrong, never throws.
  */
 export async function checkSync(s: FlowSettings, functions: FlowFunction[], hash: string): Promise<SyncCheckDone> {
-  // Without a key there is nothing to sign with (dev mode); the engine would say 401.
-  if (!s.signingKey) return { result: "no-key" };
+  // Without a key there is nothing to sign with. Dev mode checks with no key: a local
+  // engine (local mode) takes it, any other says 401 and the check logs it.
+  if (!s.signingKey && !s.isDev) return { result: "no-key" };
   const prefix = `flow: sync check of app ${s.appId}`;
   let heartbeat: number | undefined;
   const failed = (): SyncCheckDone => ({ result: "failed", nextInMs: heartbeat ?? DEFAULT_CHECK_EVERY_MS });
@@ -593,6 +599,14 @@ export async function checkSync(s: FlowSettings, functions: FlowFunction[], hash
           "Until then this app syncs only on PUT or Resync; checking again in 1 hour",
       );
       return { result: "failed", nextInMs: NOT_FOUND_CHECK_MS };
+    }
+    if (check.status === 401 && !s.signingKey && !s.signingKeyFallback) {
+      // Dev mode with no key, and not a local engine: asking again will not help.
+      console.warn(
+        `${prefix}: the engine wants a key (401). With FLOW_DEV=1 and no keys, only a local engine ` +
+          "(bun run dev, the dev Docker image) takes calls: point FLOW_BASE_URL at it, or set FLOW_SIGNING_KEY. Not checking again",
+      );
+      return { result: "no-key" };
     }
     if (check.status !== 200) {
       console.warn(`${prefix}: the check failed (${check.status}): ${engineError(checkText)}`);

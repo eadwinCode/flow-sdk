@@ -45,7 +45,10 @@ export interface FlowOptions {
   eventKey?: string;
   /** Engine URL. Default: FLOW_BASE_URL, else "https://worker.flow.clevixstudio.com". */
   baseUrl?: string;
-  /** Turns off signature checks. For local development only. */
+  /**
+   * Turns off signature checks. With no keys it also calls the engine with none, which
+   * only a local engine (local mode) takes. For local development only.
+   */
   isDev?: boolean;
   fetch?: typeof fetch;
 }
@@ -419,7 +422,7 @@ export class Flow {
   private async callSigned(method: "GET" | "POST" | "DELETE", path: string, payload: unknown, env?: FlowEnv): Promise<EngineAnswer> {
     const s = this.settings(env);
     const keys = [s.signingKey, s.signingKeyFallback].filter((k): k is string => !!k);
-    if (keys.length === 0) keys.push(""); // dev: no key; the engine answers 401
+    if (keys.length === 0) keys.push(""); // no key: a local engine (local mode) takes it; any other says 401
     const body = payload === undefined ? undefined : JSON.stringify(payload);
     let last: EngineAnswer = { ok: false, status: 0, body: null, error: "" };
     for (const [i, key] of keys.entries()) {
@@ -491,18 +494,19 @@ export class Flow {
   }
 
   /**
-   * Sends one event or a list (up to 100) to the engine. Needs the event key and the
-   * engine URL. On Workers, pass the handler's `env` if they live there.
+   * Sends one event or a list (up to 100) to the engine. Needs the event key (not in
+   * dev mode with a local engine) and the engine URL. On Workers, pass the handler's `env` if they live there.
    */
   async send(
     events: IncomingEvent | IncomingEvent[],
     options: { env?: FlowEnv } = {},
   ): Promise<{ ids: string[]; status: number }> {
     const s = this.settings(options.env);
-    if (!s.eventKey) throw new Error("flow.send needs an event key (eventKey or FLOW_EVENT_KEY)");
+    // Dev mode with no key sends with none: a local engine (local mode) takes it.
+    if (!s.eventKey && !s.isDev) throw new Error("flow.send needs an event key (eventKey or FLOW_EVENT_KEY)");
     const response = await s.fetch(`${trimSlash(s.baseUrl)}/e`, {
       method: "POST",
-      headers: { Authorization: `Bearer ${s.eventKey}`, "Content-Type": "application/json" },
+      headers: { ...(s.eventKey ? { Authorization: `Bearer ${s.eventKey}` } : {}), "Content-Type": "application/json" },
       body: JSON.stringify(events),
     });
     const text = await response.text();

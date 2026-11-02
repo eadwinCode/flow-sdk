@@ -616,6 +616,21 @@ describe("sending events", () => {
     const flow = new Flow({ id: "shop", fetch: mock, eventKey: "bad", baseUrl: "https://engine.example.com" });
     await expect(flow.send([{ name: "a/b" }])).rejects.toThrow(/401.*invalid event key/);
   });
+  it("sends with no key in dev mode, for a local engine", async () => {
+    const calls: RequestInit[] = [];
+    const mock = (async (_url: string, init: RequestInit) => {
+      calls.push(init);
+      return Response.json({ ids: ["evt_1"], status: 200 });
+    }) as unknown as typeof fetch;
+    const flow = new Flow({ id: "shop", fetch: mock, isDev: true, baseUrl: "http://127.0.0.1:8787" });
+    expect((await flow.send({ name: "a/b" })).ids).toEqual(["evt_1"]);
+    expect((calls[0]!.headers as Record<string, string>).Authorization).toBeUndefined();
+  });
+
+  it("needs an event key outside dev mode", async () => {
+    const flow = new Flow({ id: "shop", fetch: (async () => Response.json({})) as unknown as typeof fetch });
+    await expect(flow.send({ name: "a/b" })).rejects.toThrow(/needs an event key/);
+  });
 });
 
 describe("big state (useApi)", () => {
@@ -724,12 +739,21 @@ describe("big state (useApi)", () => {
     expect(calls[0]!.url).toMatch(/^https:\/\/worker\.flow\.clevixstudio\.com\/runs\//);
   });
 
-  it("needs a signing key even in dev mode (same as the Go SDK)", async () => {
+  it("loads with no key in dev mode, for a local engine (same as the Go SDK)", async () => {
     const { calls, mock } = engine([{ events: [event()], memo: {}, next: null }]);
     const handle = bigApp(() => "ok", mock, { signingKey: undefined, isDev: true });
     const res = await handle(new Request(URL_, { method: "POST", body: JSON.stringify(useApi()) }));
+    expect(res.status).toBe(200);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]!.auth).toBeNull();
+  });
+
+  it("refuses with no key outside dev mode, before loading anything", async () => {
+    const { calls, mock } = engine([{ events: [event()], memo: {}, next: null }]);
+    const handle = bigApp(() => "ok", mock, { signingKey: undefined });
+    const res = await handle(new Request(URL_, { method: "POST", body: JSON.stringify(useApi()) }));
     expect(res.status).toBe(500);
-    expect((await res.json()).name).toBe("StateLoadFailed");
+    expect((await res.json()).name).toBe("NoSigningKey");
     expect(calls).toEqual([]);
   });
 

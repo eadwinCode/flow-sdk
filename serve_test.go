@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -885,5 +886,35 @@ func TestCreateFunctionChecks(t *testing.T) {
 	}
 	if _, err := CreateFunction(c, FunctionOpts{ID: "a"}, EventTrigger("x", nil), ok); err == nil {
 		t.Fatal("duplicate id accepted")
+	}
+}
+
+// Dev mode with no keys sends events and loads run state with no bearer (a local engine).
+func TestDevNoKeyCalls(t *testing.T) {
+	var auths []string
+	engine := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, has := r.Header["Authorization"]
+		auths = append(auths, fmt.Sprint(has))
+		if r.URL.Path == "/e" {
+			_, _ = w.Write([]byte(`{"ids":["e1"],"status":200}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"events":[],"memo":{},"next":null}`))
+	}))
+	defer engine.Close()
+	c := newClient(t, ClientOpts{BaseURL: StrPtr(engine.URL), SigningKey: StrPtr(""), EventKey: StrPtr(""), Dev: BoolPtr(true)})
+	if id, err := c.Send(context.Background(), Event{Name: "a"}); err != nil || id != "e1" {
+		t.Fatalf("id=%q err=%v", id, err)
+	}
+	if _, _, err := c.loadState(context.Background(), "run_1"); err != nil {
+		t.Fatal(err)
+	}
+	if fmt.Sprint(auths) != "[false false]" {
+		t.Fatalf("Authorization sent: %v", auths)
+	}
+	// Outside dev mode, no event key is still an error.
+	nokey := newClient(t, ClientOpts{BaseURL: StrPtr(engine.URL), EventKey: StrPtr(""), Dev: BoolPtr(false)})
+	if _, err := nokey.Send(context.Background(), Event{Name: "a"}); err == nil {
+		t.Fatal("sent with no event key outside dev mode")
 	}
 }

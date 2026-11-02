@@ -32,7 +32,9 @@ type ClientOpts struct {
 	EventKey *string
 	// BaseURL is the engine URL. Env: FLOW_BASE_URL. Default: DefaultBaseURL.
 	BaseURL *string
-	// Dev turns off signature checks. Env: FLOW_DEV=1.
+	// Dev turns off signature checks. With no keys it also calls the engine with
+	// none, which only a local engine (local mode) takes. Env: FLOW_DEV=1.
+	// For local development only.
 	Dev *bool
 	// HTTPClient is used for every call to the engine, and for sockets
 	// (Subscribe, Streams().Read). Default: http.DefaultClient.
@@ -49,7 +51,8 @@ type ClientOpts struct {
 	// background whether the engine has this app's manifest, and syncs when it
 	// changed, so a deploy needs no Resync. Then it checks again every
 	// checkEveryMs the engine gives (5 min) until Client.Close. It needs the
-	// signing key; without one it does nothing.
+	// signing key; without one it does nothing, except in dev mode, where it
+	// checks with no key (for a local engine).
 	NoSyncOnBoot bool
 }
 
@@ -401,7 +404,8 @@ func (c *Client) SendMany(ctx context.Context, events []Event) ([]string, error)
 }
 
 func (c *Client) send(ctx context.Context, payload any) ([]string, error) {
-	if c.eventKey == "" {
+	// Dev mode with no key sends with none: a local engine (local mode) takes it.
+	if c.eventKey == "" && !c.dev {
 		return nil, errors.New("flow: no event key (set FLOW_EVENT_KEY or ClientOpts.EventKey)")
 	}
 	body, err := json.Marshal(payload)
@@ -413,7 +417,9 @@ func (c *Client) send(ctx context.Context, payload any) ([]string, error) {
 		return nil, err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+c.eventKey)
+	if c.eventKey != "" {
+		req.Header.Set("Authorization", "Bearer "+c.eventKey)
+	}
 	status, b, err := c.do(req)
 	if err != nil {
 		return nil, err
