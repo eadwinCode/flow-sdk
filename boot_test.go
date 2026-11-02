@@ -266,7 +266,7 @@ func TestSyncAtBootOff(t *testing.T) {
 	}
 	c.Serve()
 	// Without a signing key (and not in dev mode) it does nothing either.
-	nokey, err := NewClient(ClientOpts{AppID: "billing", SigningKey: StrPtr(""), BaseURL: StrPtr(e.URL), NoSyncOnBoot: true})
+	nokey, err := NewClient(ClientOpts{AppID: "billing", SigningKey: StrPtr(""), BaseURL: StrPtr(e.URL), Dev: BoolPtr(false), NoSyncOnBoot: true})
 	if err != nil {
 		t.Fatal(err)
 	}

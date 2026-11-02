@@ -50,7 +50,8 @@ export interface ServeOptions {
    * the background), the app checks the engine's copy of its manifest and syncs when it
    * changed, so a deploy needs no Resync. Then it checks again every `checkEveryMs` the
    * engine gives (5 min): a timer on Node, the first request after that time on Workers.
-   * `false` turns all of it off. Needs the signing key; without one it does nothing.
+   * `false` turns all of it off. Needs the signing key; without one it does nothing,
+   * except in dev mode, where it checks with no key (for a local engine).
    */
   syncOnBoot?: boolean;
 }
@@ -445,7 +446,8 @@ async function loadState(runId: string, s: FlowSettings): Promise<{ memo: Record
   if (typeof runId !== "string" || runId.length === 0) throw new Error("the invoke request has no runId");
   const headers: Record<string, string> = {};
   // Dev mode with no key: sent with none, which only a local engine takes (local mode).
-  if (s.signingKey) headers.Authorization = `Bearer ${await signingKeyBearer(s.signingKey)}`;
+  const key = s.signingKey || s.signingKeyFallback;
+  if (key) headers.Authorization = `Bearer ${await signingKeyBearer(key)}`;
   else if (!s.isDev) throw new Error("loading the run state needs a signing key: set FLOW_SIGNING_KEY");
 
   const base = `${trimSlash(s.baseUrl)}/runs/${encodeURIComponent(runId)}/state`;
@@ -597,6 +599,14 @@ export async function checkSync(s: FlowSettings, functions: FlowFunction[], hash
           "Until then this app syncs only on PUT or Resync; checking again in 1 hour",
       );
       return { result: "failed", nextInMs: NOT_FOUND_CHECK_MS };
+    }
+    if (check.status === 401 && !s.signingKey && !s.signingKeyFallback) {
+      // Dev mode with no key, and not a local engine: asking again will not help.
+      console.warn(
+        `${prefix}: the engine wants a key (401). With FLOW_DEV=1 and no keys, only a local engine ` +
+          "(bun run dev, the dev Docker image) takes calls: point FLOW_BASE_URL at it, or set FLOW_SIGNING_KEY. Not checking again",
+      );
+      return { result: "no-key" };
     }
     if (check.status !== 200) {
       console.warn(`${prefix}: the check failed (${check.status}): ${engineError(checkText)}`);

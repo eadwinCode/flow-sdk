@@ -216,8 +216,12 @@ func (c *Client) run(w http.ResponseWriter, r *http.Request, req *core.InvokeReq
 func (c *Client) loadState(ctx context.Context, runID string) (map[string]core.MemoEntry, []json.RawMessage, error) {
 	// Dev mode with no key: sent with none, which only a local engine takes (local mode).
 	bearer := ""
-	if c.signingKey != "" {
-		b, err := signingKeyBearer(c.signingKey)
+	key := c.signingKey
+	if key == "" {
+		key = c.fallbackKey
+	}
+	if key != "" {
+		b, err := signingKeyBearer(key)
 		if err != nil {
 			return nil, nil, err
 		}

@@ -748,11 +748,12 @@ describe("big state (useApi)", () => {
     expect(calls[0]!.auth).toBeNull();
   });
 
-  it("needs a signing key outside dev mode", async () => {
+  it("refuses with no key outside dev mode, before loading anything", async () => {
     const { calls, mock } = engine([{ events: [event()], memo: {}, next: null }]);
     const handle = bigApp(() => "ok", mock, { signingKey: undefined });
     const res = await handle(new Request(URL_, { method: "POST", body: JSON.stringify(useApi()) }));
     expect(res.status).toBe(500);
+    expect((await res.json()).name).toBe("NoSigningKey");
     expect(calls).toEqual([]);
   });
 
