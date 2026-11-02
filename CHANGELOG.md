@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v0.9.0
 
 - **Local dev with no keys.** With `FLOW_DEV=1` and no keys, the app now syncs, sends
   events, loads big run state and calls `/v1/...` with no key, where it used to refuse
