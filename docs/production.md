@@ -13,8 +13,12 @@
   `localhost`, `.local` or `.internal` name, and not a `clevixstudio.com` host. The
   engine refuses other URLs, for example with `app url must use a host name, not an
   IP address`.
-- **Do not set `FLOW_LOCAL_DEV=1`**, and point `FLOW_BASE_URL` at the real engine (a
-  local one turns on dev mode). Dev mode turns off the signature check.
+- **Do not set `FLOW_LOCAL_DEV=1`**, and point `FLOW_BASE_URL` at the real engine. A
+  `FLOW_BASE_URL` on `localhost`, `127.0.0.1` or `host.docker.internal` turns on dev
+  mode by itself, even with a signing key, and dev mode turns off the signature
+  check. If your app reaches the engine through a local proxy or sidecar, pass
+  `isDev: false` / `Dev: flow.BoolPtr(false)` in code. The app logs `dev mode is on`
+  when it turns on by itself.
 
 ## Sync on every deploy
 

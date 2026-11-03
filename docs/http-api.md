@@ -378,7 +378,7 @@ The endpoint your app serves (for example `/api/flow`):
 | --- | --- | --- |
 | `POST` | the engine, signed | Runs a function. Unsigned or wrongly signed: `401 {"name":"Unauthorized","message":"missing or invalid signature"}`. |
 | `GET` | the engine, signed (**Add app**, **Resync**, **Change URL**) | Gives the manifest. Unsigned: `401`. |
-| `PUT` | you, for example in CI | Syncs, and gives back the engine's answer. Needs no signature: anyone can make your app sync its own functions, but only with your key. |
+| `PUT` | a caller with the signing key; anyone in dev mode | Syncs, and gives back the engine's answer. Unsigned: `401` (dev mode: no check). |
 | other | | `405 MethodNotAllowed` |
 
 There is no hosted webhook URL. Webhooks from other services go to a route in your

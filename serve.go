@@ -34,7 +34,7 @@ const maxRequestBytes = 64 << 20
 // checks go on until Close.
 func (c *Client) Serve() http.Handler {
 	if c.signingKey == "" && !c.dev {
-		log.Printf("flow: FLOW_SIGNING_KEY is not set; app %s will refuse all requests (set FLOW_LOCAL_DEV=1 for local dev)", c.appID)
+		log.Printf("flow: FLOW_SIGNING_KEY is not set; app %s will refuse all requests (for local dev, point FLOW_BASE_URL at a local engine or set FLOW_LOCAL_DEV=1)", c.appID)
 	}
 	c.startBootSync()
 	return http.HandlerFunc(c.serveHTTP)
@@ -57,7 +57,7 @@ func writeError(w http.ResponseWriter, status int, name, message string) {
 
 func (c *Client) serveHTTP(w http.ResponseWriter, r *http.Request) {
 	if c.signingKey == "" && !c.dev {
-		writeError(w, http.StatusInternalServerError, "NoSigningKey", "FLOW_SIGNING_KEY is not set (set FLOW_LOCAL_DEV=1 for local dev)")
+		writeError(w, http.StatusInternalServerError, "NoSigningKey", "FLOW_SIGNING_KEY is not set (for local dev, point FLOW_BASE_URL at a local engine or set FLOW_LOCAL_DEV=1)")
 		return
 	}
 	switch r.Method {

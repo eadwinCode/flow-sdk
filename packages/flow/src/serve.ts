@@ -243,7 +243,7 @@ export function serveApp(options: ServeOptions): ServedApp {
 /** Why the app cannot serve, or null. Without a signing key it serves only in dev mode. */
 function checkKeys(s: FlowSettings): string | null {
   if (!s.signingKey) {
-    return s.isDev ? null : "no signing key: set FLOW_SIGNING_KEY (or FLOW_LOCAL_DEV=1 for local development)";
+    return s.isDev ? null : "no signing key: set FLOW_SIGNING_KEY (or, for local development, point FLOW_BASE_URL at a local engine or set FLOW_LOCAL_DEV=1)";
   }
   for (const key of [s.signingKey, s.signingKeyFallback]) {
     if (!key) continue;
@@ -607,7 +607,7 @@ export async function checkSync(s: FlowSettings, functions: FlowFunction[], hash
     if (check.status === 401 && !s.signingKey && !s.signingKeyFallback) {
       // Dev mode with no key, and not a local engine: asking again will not help.
       console.warn(
-        `${prefix}: the engine wants a key (401). With FLOW_LOCAL_DEV=1 and no keys, only a local engine ` +
+        `${prefix}: the engine wants a key (401). In dev mode with no keys, only a local engine ` +
           "(bun run dev, the dev Docker image) takes calls: point FLOW_BASE_URL at it, or set FLOW_SIGNING_KEY. Not checking again",
       );
       return { result: "no-key" };

@@ -177,7 +177,7 @@ func (c *Client) checkSync(ctx context.Context) (string, time.Duration) {
 	}
 	if status == http.StatusUnauthorized && c.signingKey == "" && c.fallbackKey == "" {
 		// Dev mode with no key, and not a local engine: asking again will not help.
-		log.Printf("%s: the engine wants a key (401). With FLOW_LOCAL_DEV=1 and no keys, only a local engine (bun run dev, the dev Docker image) takes calls: point FLOW_BASE_URL at it, or set FLOW_SIGNING_KEY. Not checking again", prefix)
+		log.Printf("%s: the engine wants a key (401). In dev mode with no keys, only a local engine (bun run dev, the dev Docker image) takes calls: point FLOW_BASE_URL at it, or set FLOW_SIGNING_KEY. Not checking again", prefix)
 		return bootNoKey, 0
 	}
 	if status != http.StatusOK {
