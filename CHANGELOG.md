@@ -1,5 +1,24 @@
 # Changelog
 
+## Unreleased
+
+- **`FLOW_DEV` is now `FLOW_LOCAL_DEV`.** Dev mode (no signature checks, and no keys
+  needed with a local engine) is turned on with `FLOW_LOCAL_DEV=1`, the same name the
+  local engine uses. `FLOW_DEV` is no longer read: if you set it, set `FLOW_LOCAL_DEV=1`
+  instead. `isDev` / `Dev` in code are unchanged.
+- **Dev mode turns on by itself for a local engine.** When `FLOW_LOCAL_DEV` is not
+  set and `FLOW_BASE_URL` is on `localhost`, `127.0.0.1` or `host.docker.internal`, the
+  app is in dev mode, and logs that it is. `FLOW_LOCAL_DEV=1` turns it on for any
+  address. An app that runs with keys against a local engine and should check
+  signatures must now pass `isDev: false` / `Dev: flow.BoolPtr(false)` in code.
+- **A `PUT` to your app's endpoint must be signed.** Before, anyone could send one and
+  make the app sync, with a URL taken from their own `Host` header. Now the app checks
+  the signature, like it does for `GET` and `POST`, and answers an unsigned `PUT` with
+  `401`. In dev mode (`FLOW_LOCAL_DEV=1`) it checks nothing, as before. If your deploy
+  sends `curl -X PUT https://your-app/api/flow`, change it to a plain request
+  (`curl https://your-app/api/flow`): any request starts the sync at boot. Or press
+  **Resync**. Apps that wrapped `Serve()` to refuse `PUT` can drop that.
+
 ## v0.9.0
 
 - **Local dev with no keys.** With `FLOW_DEV=1` and no keys, the app now syncs, sends

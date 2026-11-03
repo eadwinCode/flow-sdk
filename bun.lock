@@ -27,7 +27,7 @@
     },
     "packages/flow": {
       "name": "@clevix/flow",
-      "version": "0.6.5",
+      "version": "0.9.0",
       "devDependencies": {
         "@clevix/protocol": "workspace:*",
         "@types/express": "5.0.6",
@@ -53,7 +53,7 @@
     },
     "packages/protocol": {
       "name": "@clevix/protocol",
-      "version": "0.6.5",
+      "version": "0.9.0",
       "devDependencies": {
         "@types/node": "24.9.1",
         "tsup": "8.5.1",

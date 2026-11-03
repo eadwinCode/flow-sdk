@@ -84,6 +84,22 @@ export class Flow {
     this.options = options;
   }
 
+  private devNoted = false;
+
+  /**
+   * Dev mode from the env: on with FLOW_LOCAL_DEV=1, or when the engine is local
+   * (FLOW_BASE_URL on localhost, 127.0.0.1 or host.docker.internal).
+   */
+  private devFromEnv(flag: string | undefined, baseUrl: string): boolean {
+    if (flag === "1") return true;
+    if (!isLocalUrl(baseUrl)) return false;
+    if (!this.devNoted) {
+      this.devNoted = true;
+      console.warn(`flow: dev mode is on because FLOW_BASE_URL is local (${baseUrl}): signatures are not checked. Pass isDev: false to check them`);
+    }
+    return true;
+  }
+
   /** Reads settings from the options, then `env` (Workers), then `process.env`. */
   settings(env?: FlowEnv): FlowSettings {
     const read = (name: string): string | undefined => {
@@ -94,14 +110,15 @@ export class Flow {
       return undefined;
     };
     const o = this.options;
+    const baseUrl = o.baseUrl || read("FLOW_BASE_URL") || DEFAULT_BASE_URL;
     return {
       appId: this.id,
       signingKey: o.signingKey ?? read("FLOW_SIGNING_KEY"),
       signingKeyFallback: o.signingKeyFallback ?? read("FLOW_SIGNING_KEY_FALLBACK"),
       eventKey: o.eventKey ?? read("FLOW_EVENT_KEY"),
       // An empty option counts as not set, like an empty env var (same as the Go SDK).
-      baseUrl: o.baseUrl || read("FLOW_BASE_URL") || DEFAULT_BASE_URL,
-      isDev: o.isDev ?? read("FLOW_DEV") === "1",
+      baseUrl,
+      isDev: o.isDev ?? this.devFromEnv(read("FLOW_LOCAL_DEV"), baseUrl),
       // Wrapped: on Workers, calling a detached `fetch` throws "Illegal invocation".
       fetch: o.fetch ?? ((input, init) => fetch(input, init)),
     };
@@ -710,4 +727,16 @@ export interface FlowStreams {
     id: string,
     options?: { after?: string; signal?: AbortSignal; WebSocket?: typeof WebSocket; env?: FlowEnv },
   ): AsyncIterable<StreamItem<T>>;
+}
+
+/** The engine hosts that turn on dev mode by themselves. */
+const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "host.docker.internal"]);
+
+/** Whether the engine runs on this machine (or on the Docker host). */
+export function isLocalUrl(raw: string): boolean {
+  try {
+    return LOCAL_HOSTS.has(new URL(raw).hostname.toLowerCase());
+  } catch {
+    return false;
+  }
 }

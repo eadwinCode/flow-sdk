@@ -13,7 +13,12 @@
   `localhost`, `.local` or `.internal` name, and not a `clevixstudio.com` host. The
   engine refuses other URLs, for example with `app url must use a host name, not an
   IP address`.
-- **Do not set `FLOW_DEV=1`.** It turns off the signature check.
+- **Do not set `FLOW_LOCAL_DEV=1`**, and point `FLOW_BASE_URL` at the real engine. A
+  `FLOW_BASE_URL` on `localhost`, `127.0.0.1` or `host.docker.internal` turns on dev
+  mode by itself, even with a signing key, and dev mode turns off the signature
+  check. If your app reaches the engine through a local proxy or sidecar, pass
+  `isDev: false` / `Dev: flow.BoolPtr(false)` in code. The app logs `dev mode is on`
+  when it turns on by itself.
 
 ## Sync on every deploy
 
@@ -66,20 +71,17 @@ back at once, click **Resync** in the dashboard.
 ### A backup in CI
 
 A Worker that gets no traffic after a deploy does not sync until its first request.
-If that matters (an app with only cron functions, say), sync as the last step of the
-deploy, after the new code is live:
+If that matters (an app with only cron functions, say), send it one request as the
+last step of the deploy, after the new code is live:
 
 ```bash
-curl -fsS -X PUT https://shop.example.com/api/flow
+curl -sS -o /dev/null https://shop.example.com/api/flow
 ```
 
-A `PUT` to your endpoint makes the app send its manifest, with the URL of that
-request, and gives back the engine's answer. `-f` makes curl fail on an error answer,
-so your deploy fails too and you notice. A sync is safe to send more than once:
-
-```json
-{"ok":true,"created":false,"urlChanged":null,"modified":[],"archived":[]}
-```
+Any request starts the sync at boot, even this one, which the app answers with `401`
+(it is not signed). The sync runs in the background: check the app's log, or the
+Apps page, to see that it worked. A plain `curl -X PUT` no longer works here: since
+v0.10.0 the app only takes a signed `PUT` (outside dev mode).
 
 In GitHub Actions:
 
@@ -87,7 +89,7 @@ In GitHub Actions:
 - name: Deploy
   run: npx wrangler deploy
 - name: Sync functions with the engine
-  run: curl -fsS -X PUT https://shop.example.com/api/flow
+  run: curl -sS -o /dev/null https://shop.example.com/api/flow
 ```
 
 If the app runs on several servers, one sync is enough. You can also click
@@ -168,7 +170,7 @@ are kept 4 days.
 
 ## Troubleshooting
 
-**Sync fails** (the answer to `curl -X PUT <app-url>`, or the app's log)
+**Sync fails** (the app's log, or the answer to **Resync**)
 
 | Answer | Cause |
 | --- | --- |

@@ -93,7 +93,7 @@ argument so the sync at boot can finish after the answer.
 | Method | What it does |
 | --- | --- |
 | `POST` | Runs a function. Signed by the engine. |
-| `PUT` | Syncs: sends the manifest to the engine, and gives back its answer. `curl -X PUT https://your-app/api/flow`. |
+| `PUT` | Syncs: sends the manifest to the engine, and gives back its answer. Only for signed calls, like `GET`; in dev mode, `curl -X PUT http://127.0.0.1:<port>/api/flow` works too. |
 | `GET` | Gives the manifest. Only for signed calls (the engine's **Add app**, **Resync**, **Change URL** and its pings while the app is down); otherwise `401`. |
 
 ## `new Flow(options)`
@@ -105,7 +105,7 @@ argument so the sync at boot can finish after the answer.
 | `signingKeyFallback` | `FLOW_SIGNING_KEY_FALLBACK` | The old key while you rotate. |
 | `eventKey` | `FLOW_EVENT_KEY` | For `flow.send`. |
 | `baseUrl` | `FLOW_BASE_URL` | The engine's URL. |
-| `isDev` | `FLOW_DEV=1` | Turns off signature checks. Local tests only. |
+| `isDev` | `FLOW_LOCAL_DEV` | Turns off signature checks. On by itself for a local `FLOW_BASE_URL`. Local work only. |
 | `fetch` | | The `fetch` to use. Default: the global one. |
 
 A value in code wins over the env var. See [Settings](settings.md) for what each does

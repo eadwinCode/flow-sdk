@@ -122,7 +122,7 @@ Until you connect it, the app logs a line like this when it starts. It is fine, 
 it stops once the app is connected:
 
 ```
-flow: sync check of app quickstart: the sync failed (400): invalid url. The engine may not know this app's URL yet: add the app by URL in the dashboard, or sync once with curl -X PUT <app-url>
+flow: sync check of app quickstart: the sync failed (400): invalid url. The engine may not know this app's URL yet: add the app by URL in the dashboard (in dev mode, curl -X PUT <app-url> also works)
 ```
 
 The hosted engine calls your app over `https`, so it can not reach `localhost`.

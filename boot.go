@@ -177,7 +177,7 @@ func (c *Client) checkSync(ctx context.Context) (string, time.Duration) {
 	}
 	if status == http.StatusUnauthorized && c.signingKey == "" && c.fallbackKey == "" {
 		// Dev mode with no key, and not a local engine: asking again will not help.
-		log.Printf("%s: the engine wants a key (401). With FLOW_DEV=1 and no keys, only a local engine (bun run dev, the dev Docker image) takes calls: point FLOW_BASE_URL at it, or set FLOW_SIGNING_KEY. Not checking again", prefix)
+		log.Printf("%s: the engine wants a key (401). In dev mode with no keys, only a local engine (bun run dev, the dev Docker image) takes calls: point FLOW_BASE_URL at it, or set FLOW_SIGNING_KEY. Not checking again", prefix)
 		return bootNoKey, 0
 	}
 	if status != http.StatusOK {
@@ -234,7 +234,7 @@ func (c *Client) checkSync(ctx context.Context) (string, time.Duration) {
 	}
 	hint := ""
 	if stored.SyncedAt == nil {
-		hint = ". The engine may not know this app's URL yet: add the app by URL in the dashboard, or sync once with curl -X PUT <app-url>"
+		hint = ". The engine may not know this app's URL yet: add the app by URL in the dashboard (in dev mode, curl -X PUT <app-url> also works)"
 	}
 	log.Printf("%s: the sync failed (%d): %s%s", prefix, status, engineError(body), hint)
 	return failed()

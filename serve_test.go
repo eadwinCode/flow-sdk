@@ -135,6 +135,16 @@ func signedPost(t *testing.T, c *Client, body []byte) answer {
 	return send(t, c, http.MethodPost, body, sig)
 }
 
+// signedPut is a PUT signed over the empty body, as a caller with the key sends it.
+func signedPut(t *testing.T, c *Client) answer {
+	t.Helper()
+	sig, err := signRequest(testKey, nil, testNow)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return send(t, c, http.MethodPut, nil, sig)
+}
+
 func run(t *testing.T, c *Client, fnID string, o reqOpts) answer {
 	t.Helper()
 	return signedPost(t, c, invokeBody(t, fnID, o))
@@ -666,7 +676,7 @@ func TestDevModeAndNoKey(t *testing.T) {
 func TestEnvVars(t *testing.T) {
 	t.Setenv("FLOW_SIGNING_KEY", testKey)
 	t.Setenv("FLOW_BASE_URL", "https://engine.example.com/")
-	t.Setenv("FLOW_DEV", "1")
+	t.Setenv("FLOW_LOCAL_DEV", "1")
 	c, err := NewClient(ClientOpts{AppID: "billing"})
 	if err != nil {
 		t.Fatal(err)
@@ -820,7 +830,7 @@ func TestPutSync(t *testing.T) {
 	// The manifest URL is the URL of the PUT request itself.
 	c := newClient(t, ClientOpts{BaseURL: StrPtr(engine.URL + "/")})
 	testFunctions(t, c)
-	a := send(t, c, http.MethodPut, nil, "")
+	a := signedPut(t, c)
 	if a.status != 200 || !strings.Contains(string(a.body), `"created":true`) {
 		t.Fatalf("got %d %s", a.status, a.body)
 	}
@@ -834,6 +844,29 @@ func TestPutSync(t *testing.T) {
 	}
 }
 
+func TestPutSyncNeedsSignature(t *testing.T) {
+	calls := 0
+	engine := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		_, _ = w.Write([]byte(`{"ok":true}`))
+	}))
+	defer engine.Close()
+	c := newClient(t, ClientOpts{BaseURL: StrPtr(engine.URL)})
+	for _, sig := range []string{"", "t=1,v1=00"} {
+		if a := send(t, c, http.MethodPut, nil, sig); a.status != 401 {
+			t.Fatalf("PUT with signature %q: got %d %s", sig, a.status, a.body)
+		}
+	}
+	if calls != 0 {
+		t.Fatalf("an unsigned PUT reached the engine %d times", calls)
+	}
+	// Dev mode checks nothing: a plain PUT syncs.
+	dev := newClient(t, ClientOpts{BaseURL: StrPtr(engine.URL), Dev: BoolPtr(true)})
+	if a := send(t, dev, http.MethodPut, nil, ""); a.status != 200 || calls != 1 {
+		t.Fatalf("dev PUT: got %d %s, engine calls %d", a.status, a.body, calls)
+	}
+}
+
 func TestPutSyncPassesEngineError(t *testing.T) {
 	engine := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(401)
@@ -841,7 +874,7 @@ func TestPutSyncPassesEngineError(t *testing.T) {
 	}))
 	defer engine.Close()
 	c := newClient(t, ClientOpts{BaseURL: StrPtr(engine.URL)})
-	a := send(t, c, http.MethodPut, nil, "")
+	a := signedPut(t, c)
 	if a.status != 401 || !strings.Contains(string(a.body), "invalid signing key") {
 		t.Fatalf("got %d %s", a.status, a.body)
 	}
@@ -916,5 +949,40 @@ func TestDevNoKeyCalls(t *testing.T) {
 	nokey := newClient(t, ClientOpts{BaseURL: StrPtr(engine.URL), EventKey: StrPtr(""), Dev: BoolPtr(false)})
 	if _, err := nokey.Send(context.Background(), Event{Name: "a"}); err == nil {
 		t.Fatal("sent with no event key outside dev mode")
+	}
+}
+
+func TestDevModeFromEnv(t *testing.T) {
+	cases := []struct {
+		base, flag string
+		want       bool
+	}{
+		{"http://localhost:8787", "", true},
+		{"http://127.0.0.1:8787", "", true},
+		{"http://host.docker.internal:8787", "", true},
+		{"http://LOCALHOST:8787", "", true},
+		{"http://localhost:8787", "0", true},
+		{"https://worker.flow.clevixstudio.com", "", false},
+		{"https://worker.flow.clevixstudio.com", "1", true},
+		{"http://flow-dev:8787", "", false},
+		{"http://localhost.example.com", "", false},
+	}
+	for _, tc := range cases {
+		t.Setenv("FLOW_BASE_URL", tc.base)
+		t.Setenv("FLOW_LOCAL_DEV", tc.flag)
+		c, err := NewClient(ClientOpts{AppID: "billing", NoSyncOnBoot: true})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if c.dev != tc.want {
+			t.Errorf("FLOW_BASE_URL=%s FLOW_LOCAL_DEV=%q: dev = %v, want %v", tc.base, tc.flag, c.dev, tc.want)
+		}
+	}
+	// Dev in code wins over both.
+	t.Setenv("FLOW_BASE_URL", "http://localhost:8787")
+	t.Setenv("FLOW_LOCAL_DEV", "1")
+	c, _ := NewClient(ClientOpts{AppID: "billing", NoSyncOnBoot: true, Dev: BoolPtr(false)})
+	if c.dev {
+		t.Error("Dev: false in code did not win")
 	}
 }
