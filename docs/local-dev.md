@@ -88,8 +88,8 @@ keys below.
 
 A key that you do send is still checked: a wrong key gets `401`, as in production.
 
-> This needs an SDK newer than v0.8.0 (see the [changelog](https://github.com/eadwinCode/flow-sdk/blob/main/CHANGELOG.md)). v0.8.0 and
-> before still ask for `FLOW_SIGNING_KEY` and `FLOW_EVENT_KEY`: use the steps with keys below.
+> This needs SDK v0.9.0 or later. v0.8.0 and before still ask for `FLOW_SIGNING_KEY`
+> and `FLOW_EVENT_KEY`: use the steps with keys below.
 
 ### With keys, as in production
 
