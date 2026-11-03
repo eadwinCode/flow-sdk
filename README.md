@@ -48,7 +48,7 @@ and builds them against the SDK in this repo.
 2. It serves one HTTP endpoint (for example `/api/flow`). The engine calls it to
    run your steps. Every call is signed, and the SDK checks the signature.
 3. After each deploy, the app syncs by itself when it starts, so the engine knows
-   your functions. A backup for CI: `curl -X PUT https://your-app/api/flow`.
+   your functions. **Resync** in the dashboard does the same.
 4. Send events to the engine. Functions whose trigger matches start a run.
 
 ## Settings
@@ -61,7 +61,7 @@ Both SDKs read the same env vars. Values passed in code win.
 | `FLOW_SIGNING_KEY_FALLBACK` | The app's old key while you rotate it. |
 | `FLOW_EVENT_KEY` | For sending events from your app. |
 | `FLOW_BASE_URL` | The engine's URL. Default: `https://worker.flow.clevixstudio.com` (`https://worker.clevixstudio.com` in v0.6.5). Set it only if you run your own engine. |
-| `FLOW_DEV` | `1` turns off signature checks. For local work only. |
+| `FLOW_LOCAL_DEV` | Dev mode: no signature checks. On by itself for a local `FLOW_BASE_URL`; `1` turns it on. |
 
 ## Versions
 

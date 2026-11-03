@@ -18,7 +18,7 @@ engine.
 | `FLOW_SIGNING_KEY_FALLBACK` | Old key while rotating. Calls signed with either key are accepted. |
 | `FLOW_EVENT_KEY` | Event key, for sending events. |
 | `FLOW_BASE_URL` | Engine URL. Default: `https://worker.flow.clevixstudio.com` (`https://worker.clevixstudio.com` in v0.6.5 and before). |
-| `FLOW_DEV` | `1` turns off signature checks. Without it, the SDK refuses to serve with no signing key. |
+| `FLOW_LOCAL_DEV` | Dev mode: no signature checks. On with `1`, or when `FLOW_BASE_URL` is on `localhost`, `127.0.0.1` or `host.docker.internal`. Outside dev mode, the SDK refuses to serve with no signing key. |
 
 Options passed in code win over these. [Settings](settings.md) has the details.
 
@@ -29,7 +29,7 @@ An app serves one URL (for example `/api/flow`):
 | Method | What |
 | --- | --- |
 | `POST` | Run a function. Signed by the engine. |
-| `PUT` | Sync: the app sends its manifest to the engine (`PUT {base}/apps/{appId}/sync`) and returns the engine's answer. The SDK also syncs by itself when it starts (see "Sync at boot"); this is the backup, for example `curl -X PUT https://app/api/flow` in CI. |
+| `PUT` | Sync: the app sends its manifest to the engine (`PUT {base}/apps/{appId}/sync`) and returns the engine's answer. Requires a valid signature over the empty body, like `GET` (dev mode: none), so a stranger can not make the app sync. The SDK also syncs by itself when it starts (see "Sync at boot"). Before v0.10.0, `PUT` was not checked. |
 | `GET` | Returns the manifest (`AppManifest`) as JSON. Requires a valid signature over the empty body (dev mode: none). The engine calls it to add the app by URL, to resync it, to change its URL, and to ping it while it is down. |
 
 ### Signature check (POST and GET)

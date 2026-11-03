@@ -26,7 +26,7 @@ import { SDK_VERSION } from "./version.ts";
 
 // The app's one endpoint (see docs/protocol.md, "The one endpoint"):
 //   POST  run a function (signed by the engine)
-//   PUT   sync: send the manifest to the engine
+//   PUT   sync: send the manifest to the engine (signed; dev mode: no check)
 //   GET   the manifest (signed over the empty body)
 // Every answer to a POST or GET that passed the signature check is signed too
 // (X-Flow-Answer-Signature), so the engine knows it came from the app.
@@ -227,8 +227,12 @@ export function serveApp(options: ServeOptions): ServedApp {
         const manifest = { ...buildManifest(client.id, serveUrl(request), functions), manifestHash: await ownHash() };
         return seal(json(manifest), signer);
       }
-      case "PUT":
+      case "PUT": {
+        // Signed, like GET and POST (dev mode skips the check): an unsigned PUT from
+        // anyone could make the app sync, with a URL taken from their Host header.
+        if (!(await checkRequest(request, await request.text(), settings))) return unauthorized();
         return handleSync(request, settings, functions, await ownHash());
+      }
       default:
         return errorResponse(405, { name: "MethodNotAllowed", message: `${request.method} is not allowed` });
     }
@@ -239,7 +243,7 @@ export function serveApp(options: ServeOptions): ServedApp {
 /** Why the app cannot serve, or null. Without a signing key it serves only in dev mode. */
 function checkKeys(s: FlowSettings): string | null {
   if (!s.signingKey) {
-    return s.isDev ? null : "no signing key: set FLOW_SIGNING_KEY (or FLOW_DEV=1 for local development)";
+    return s.isDev ? null : "no signing key: set FLOW_SIGNING_KEY (or FLOW_LOCAL_DEV=1 for local development)";
   }
   for (const key of [s.signingKey, s.signingKeyFallback]) {
     if (!key) continue;
@@ -603,7 +607,7 @@ export async function checkSync(s: FlowSettings, functions: FlowFunction[], hash
     if (check.status === 401 && !s.signingKey && !s.signingKeyFallback) {
       // Dev mode with no key, and not a local engine: asking again will not help.
       console.warn(
-        `${prefix}: the engine wants a key (401). With FLOW_DEV=1 and no keys, only a local engine ` +
+        `${prefix}: the engine wants a key (401). With FLOW_LOCAL_DEV=1 and no keys, only a local engine ` +
           "(bun run dev, the dev Docker image) takes calls: point FLOW_BASE_URL at it, or set FLOW_SIGNING_KEY. Not checking again",
       );
       return { result: "no-key" };
@@ -654,7 +658,7 @@ export async function checkSync(s: FlowSettings, functions: FlowFunction[], hash
     console.warn(
       `${prefix}: the sync failed (${response.status}): ${engineError(text)}` +
         (neverSynced
-          ? ". The engine may not know this app's URL yet: add the app by URL in the dashboard, or sync once with curl -X PUT <app-url>"
+          ? ". The engine may not know this app's URL yet: add the app by URL in the dashboard (in dev mode, curl -X PUT <app-url> also works)"
           : ""),
     );
     return failed();

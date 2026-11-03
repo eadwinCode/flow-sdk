@@ -217,7 +217,7 @@ fails as usual.
 
 - **Cron on Workers with no traffic.** An app syncs its functions when it starts. On
   Cloudflare Workers, that is on the first request after a deploy. An app with only
-  cron functions may get no request, so add a `PUT` sync to your deploy. See
+  cron functions may get no request, so send it one request at the end of your deploy. See
   [Going to production](production.md#a-backup-in-ci).
 - **A paused function skips its times.** They do not run later.
 - **Sleeps are as long as you like**, but a run is deleted 3 days after it ends (4

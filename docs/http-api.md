@@ -45,8 +45,10 @@ Answers, as the engine gave them on a local engine:
 ## `PUT /apps/{appId}/sync`: sync an app
 
 Sends the app's manifest. The SDK does this for you; you do not need to build a
-manifest by hand. To make your app sync, send a `PUT` to **your app's endpoint**
-instead: `curl -X PUT https://your-app/api/flow`. The answer:
+manifest by hand. To make your app sync, restart it, or press **Resync** in the
+dashboard. A `PUT` to **your app's endpoint** syncs too, but only when it is signed
+with the app's signing key, or when the app runs in dev mode
+(`curl -X PUT http://127.0.0.1:<port>/api/flow`). The answer:
 
 ```json
 {"ok":true,"created":false,"urlChanged":null,"modified":["shop-onboard-user"],"archived":[]}

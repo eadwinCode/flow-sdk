@@ -33,7 +33,7 @@ type ClientOpts struct {
 	// BaseURL is the engine URL. Env: FLOW_BASE_URL. Default: DefaultBaseURL.
 	BaseURL *string
 	// Dev turns off signature checks. With no keys it also calls the engine with
-	// none, which only a local engine (local mode) takes. Env: FLOW_DEV=1.
+	// none, which only a local engine (local mode) takes. Env: FLOW_LOCAL_DEV=1.
 	// For local development only.
 	Dev *bool
 	// HTTPClient is used for every call to the engine, and for sockets
@@ -110,10 +110,16 @@ func NewClient(opts ClientOpts) (*Client, error) {
 	if c.baseURL == "" {
 		c.baseURL = DefaultBaseURL
 	}
-	if opts.Dev != nil {
+	switch {
+	case opts.Dev != nil:
 		c.dev = *opts.Dev
-	} else {
-		c.dev = os.Getenv("FLOW_DEV") == "1"
+	case os.Getenv("FLOW_LOCAL_DEV") == "1":
+		c.dev = true
+	default:
+		c.dev = isLocalURL(c.baseURL)
+		if c.dev {
+			log.Printf("flow: dev mode is on because FLOW_BASE_URL is local (%s): signatures are not checked. Pass Dev: flow.BoolPtr(false) to check them", c.baseURL)
+		}
 	}
 	if c.http == nil {
 		c.http = http.DefaultClient
@@ -441,4 +447,13 @@ func (c *Client) send(ctx context.Context, payload any) ([]string, error) {
 		return nil, fmt.Errorf("flow: cannot read the engine's answer: %w", err)
 	}
 	return out.IDs, nil
+}
+
+// localHosts are the engine hosts that turn on dev mode by themselves.
+var localHosts = map[string]bool{"localhost": true, "127.0.0.1": true, "host.docker.internal": true}
+
+// isLocalURL says whether the engine runs on this machine (or on the Docker host).
+func isLocalURL(raw string) bool {
+	u, err := url.Parse(raw)
+	return err == nil && localHosts[strings.ToLower(u.Hostname())]
 }

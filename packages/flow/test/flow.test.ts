@@ -457,7 +457,7 @@ describe("signatures", () => {
     // Dev mode from the Workers env: no signature needed.
     const dev = await serve({ client: flow, functions: [fn] })(
       new Request(URL_, { method: "POST", body: JSON.stringify(invoke("fn")) }),
-      { FLOW_DEV: "1" },
+      { FLOW_LOCAL_DEV: "1" },
     );
     expect(dev.status).toBe(200);
     expect(await dev.json()).toBe("ok");
@@ -524,7 +524,7 @@ describe("manifest and sync", () => {
     }) as unknown as typeof fetch;
     const client = new Flow({ ...flow.options, fetch: mock });
     const handle = serve({ client, functions: [client.createFunction({ id: "charge" }, { event: "billing/charge" }, () => null)] });
-    const res = await handle(new Request(URL_, { method: "PUT" }));
+    const res = await handle(new Request(URL_, { method: "PUT", headers: { "X-Inngest-Signature": await signRequest(KEY, "") } }));
     expect(res.status).toBe(200);
     expect(await res.json()).toMatchObject({ ok: true, created: true });
     expect(calls).toHaveLength(1);
@@ -540,10 +540,28 @@ describe("manifest and sync", () => {
     });
   });
 
+  it("PUT needs a signature, except in dev mode", async () => {
+    let calls = 0;
+    const mock = (async () => {
+      calls++;
+      return Response.json({ ok: true });
+    }) as unknown as typeof fetch;
+    const client = new Flow({ ...flow.options, fetch: mock });
+    const handle = serve({ client, functions: [] });
+    for (const headers of [{}, { "X-Inngest-Signature": "t=1&s=00" }] as Record<string, string>[]) {
+      expect((await handle(new Request(URL_, { method: "PUT", headers }))).status).toBe(401);
+    }
+    expect(calls).toBe(0);
+    // Dev mode checks nothing: a plain PUT syncs.
+    const dev = new Flow({ ...flow.options, isDev: true, fetch: mock });
+    expect((await serve({ client: dev, functions: [] })(new Request(URL_, { method: "PUT" }))).status).toBe(200);
+    expect(calls).toBe(1);
+  });
+
   it("PUT passes on an engine error as it came", async () => {
     const mock = (async () => Response.json({ error: "invalid signing key", status: 401 }, { status: 401 })) as unknown as typeof fetch;
     const client = new Flow({ ...flow.options, fetch: mock });
-    const res = await serve({ client, functions: [] })(new Request(URL_, { method: "PUT" }));
+    const res = await serve({ client, functions: [] })(new Request(URL_, { method: "PUT", headers: { "X-Inngest-Signature": await signRequest(KEY, "") } }));
     expect(res.status).toBe(401);
     expect(await res.json()).toEqual({ error: "invalid signing key", status: 401 });
   });
@@ -569,6 +587,22 @@ describe("manifest and sync", () => {
 });
 
 describe("engine URL", () => {
+  it("turns on dev mode for a local engine", () => {
+    const dev = (env: Record<string, string>, opts: { isDev?: boolean } = {}) => new Flow({ id: "a", ...opts }).settings(env).isDev;
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    for (const host of ["localhost", "127.0.0.1", "host.docker.internal", "LOCALHOST"]) {
+      expect(dev({ FLOW_BASE_URL: `http://${host}:8787` })).toBe(true);
+    }
+    expect(dev({ FLOW_BASE_URL: "http://localhost:8787", FLOW_LOCAL_DEV: "0" })).toBe(true);
+    expect(dev({})).toBe(false);
+    expect(dev({ FLOW_LOCAL_DEV: "1" })).toBe(true);
+    expect(dev({ FLOW_BASE_URL: "http://flow-dev:8787" })).toBe(false);
+    expect(dev({ FLOW_BASE_URL: "http://localhost.example.com" })).toBe(false);
+    // isDev in code wins over both.
+    expect(dev({ FLOW_BASE_URL: "http://localhost:8787", FLOW_LOCAL_DEV: "1" }, { isDev: false })).toBe(false);
+    warn.mockRestore();
+  });
+
   it("is the option, else FLOW_BASE_URL, else the default", () => {
     expect(DEFAULT_BASE_URL).toBe("https://worker.flow.clevixstudio.com");
     expect(new Flow({ id: "a" }).settings({}).baseUrl).toBe(DEFAULT_BASE_URL);
@@ -587,7 +621,7 @@ describe("engine URL", () => {
       return Response.json({ ok: true });
     }) as unknown as typeof fetch;
     const flow = new Flow({ id: "shop", signingKey: KEY, fetch: mock });
-    await serve({ client: flow, functions: [] })(new Request("https://shop.example.com/api/flow?x=1", { method: "PUT" }), {
+    await serve({ client: flow, functions: [] })(new Request("https://shop.example.com/api/flow?x=1", { method: "PUT", headers: { "X-Inngest-Signature": await signRequest(KEY, "") } }), {
       FLOW_SERVE_URL: "https://ignored.example.com/flow",
     });
     expect(JSON.parse(bodies[0]!).url).toBe("https://shop.example.com/api/flow");

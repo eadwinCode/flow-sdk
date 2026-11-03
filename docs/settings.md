@@ -9,7 +9,7 @@ Both SDKs read the same env vars. A value you pass in code (`new Flow({ ... })` 
 | `FLOW_SIGNING_KEY_FALLBACK` | `signingKeyFallback` / `SigningKeyFallback` | none | Only the main key is used. |
 | `FLOW_EVENT_KEY` | `eventKey` / `EventKey` | none | Sending fails at once: `flow.send needs an event key (eventKey or FLOW_EVENT_KEY)` / `flow: no event key (set FLOW_EVENT_KEY or ClientOpts.EventKey)`. Serving works. |
 | `FLOW_BASE_URL` | `baseUrl` / `BaseURL` | `https://worker.clevixstudio.com` in v0.6.5; `https://worker.flow.clevixstudio.com` from the next release | The default is used. |
-| `FLOW_DEV` | `isDev` / `Dev` | off | Signatures are checked. Only the text `1` turns dev mode on. |
+| `FLOW_LOCAL_DEV` | `isDev` / `Dev` | on when `FLOW_BASE_URL` is local, else off | `1` turns dev mode on. |
 
 ## What each one does
 
@@ -37,9 +37,12 @@ app sends events. `step.sendEvent` inside a function does not need it.
 (`http://127.0.0.1:8787`) or your own engine. The SDK uses it for sending events,
 sync, realtime, and loading a run's state when it is over 4 MB.
 
-**`FLOW_DEV=1`** turns off the signature check: the endpoint takes unsigned calls.
-For a quick local test only. Never on a public app: anyone could start your
-functions. With a [local engine](local-dev.md#with-no-keys), it also lets the app run
+**Dev mode** turns off the signature check: the endpoint takes unsigned calls. It is on
+by itself when `FLOW_BASE_URL` is on `localhost`, `127.0.0.1` or
+`host.docker.internal`, and `FLOW_LOCAL_DEV=1` turns it on for any address.
+`isDev` / `Dev` in code win over both: `false` keeps it off. For local work
+only. Never on a public app: anyone could start your functions. With a
+[local engine](local-dev.md#with-no-keys), it also lets the app run
 with no `FLOW_SIGNING_KEY` and no `FLOW_EVENT_KEY`: the local engine takes its sync,
 events and calls with no key.
 

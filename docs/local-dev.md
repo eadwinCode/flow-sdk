@@ -68,16 +68,18 @@ The local engine runs in **local mode** (`bun run dev` and the Docker image turn
 on with `FLOW_LOCAL_DEV=1`). In local mode the engine takes a sync, an event or an
 app's call that has **no key**, and puts it in the built-in workspace, the one your
 local login is an Owner of. So you need no **Add app**, no signing key and no event
-key:
+key. Set only the engine's address:
 
 ```bash
 FLOW_BASE_URL=http://127.0.0.1:8787
-FLOW_DEV=1
 ```
+
+When `FLOW_BASE_URL` is on `localhost`, `127.0.0.1` or `host.docker.internal`, the SDK
+turns on **dev mode** by itself, and logs that it did. For any other engine address, `FLOW_LOCAL_DEV=1` turns it on.
 
 1. Start your app. Its sync at start adds it to the dashboard's **Apps** page, with
    its functions. The engine makes a signing key for the app and signs its calls
-   with it; with `FLOW_DEV=1` your app does not check them.
+   with it; in dev mode your app does not check them.
 2. Send an event to `http://127.0.0.1:8787/e` with no key (with curl, `flow.send()`
    or `client.Send()`), and watch the run in the dashboard.
 
@@ -105,8 +107,10 @@ Use this to test your app as it will run in production, with the signature check
    FLOW_EVENT_KEY=<the event key>
    ```
 
-   Keep the signature check on: do **not** set `FLOW_DEV=1`. The local engine signs
-   its calls like the real one, so your app runs as it will in production.
+   A local `FLOW_BASE_URL` turns on dev mode, so to keep the signature check on, pass
+   `isDev: false` (TypeScript) or `Dev: flow.BoolPtr(false)` (Go) in code. The local
+   engine signs its calls like the real one, so your app runs as it will in
+   production.
 3. In **Add app**, type your endpoint's URL **as the engine reaches it**, and click
    **Connect**:
 
@@ -132,8 +136,9 @@ Each time your app starts, it syncs its functions by itself (the SDK compares a 
 of its functions with the engine's copy). So after you change a function, restart
 the app. You can also click **Resync** on the Apps page.
 
-A `PUT` to your own endpoint syncs too, and **saves the URL the request used as the
-app's URL**. So send it with the address the engine uses:
+In dev mode, a `PUT` to your own endpoint syncs too, and **saves the URL
+the request used as the app's URL**. So send it with the address the engine uses
+(without dev mode, the app needs the `PUT` signed and answers a plain one with `401`):
 
 ```bash
 # bun run dev, app on your machine: the engine uses the same address as you
@@ -208,17 +213,15 @@ It prints a public URL like `https://random-words.trycloudflare.com`. Then:
 3. Connect it with the tunnel URL and the path:
    `https://random-words.trycloudflare.com/api/flow`.
 
-Each time the tunnel gives you a new URL, sync through the new URL
-(`curl -X PUT https://<new tunnel URL>/api/flow`), or use **Change URL** on the Apps
-page.
+Each time the tunnel gives you a new URL, use **Change URL** on the Apps page.
 
 A tunnel like this goes through Cloudflare's proxy, which ends a call that sends
 nothing for about 100 seconds. The SDK sends a small heartbeat every 20 seconds while
 a step runs, so steps can still run up to their step timeout.
 
-`FLOW_DEV=1` turns off the signature check in the SDK. Use it only for a quick test
-that nothing but you can reach. Never set it on a public app: anyone could then call
-your functions.
+Dev mode turns off the signature check in the SDK. Use it only for a quick test that
+nothing but you can reach. A tunnel makes your app public, so run it with keys and
+dev mode off in code: otherwise anyone could call your functions.
 
 ## Troubleshooting
 
@@ -228,8 +231,9 @@ your functions.
 | Add app says `app url must be https` | The host is not allowed over plain `http`. `bun run dev` allows `localhost` and `127.0.0.1`; add others with `FLOW_ALLOW_HTTP_HOSTS`. The Docker image allows any host. |
 | Add app says the app did not answer | The engine can not reach the URL you typed. From inside Docker, `localhost` is the container itself: use `host.docker.internal` or the compose service name. |
 | Steps fail after a `curl -X PUT` sync, and the app shows **Down** | Under Docker, a `PUT` saved `127.0.0.1` as the app's URL. Send it again with the engine's address in the `Host` header, or use **Resync**. |
-| The app logs `sync needs a signing key` or `flow.send needs an event key` with `FLOW_DEV=1` | Your SDK is too old for keyless local mode. Use the steps [with keys](#with-keys-as-in-production). |
+| The app logs `sync needs a signing key` or `flow.send needs an event key` in dev mode | Your SDK is too old for keyless local mode. Use the steps [with keys](#with-keys-as-in-production). |
 | A sync or event with no key gets `401` | The engine is not in local mode (it needs `FLOW_LOCAL_DEV=1`; `bun run dev` and the Docker image set it), or it is the hosted engine, which always needs keys. |
+| An app that runs with keys does not check signatures, and logs `dev mode is on` | Its `FLOW_BASE_URL` is local, which turns on dev mode. Pass `isDev: false` / `Dev: flow.BoolPtr(false)` in code. |
 | Every call to your app gets `401` | `FLOW_SIGNING_KEY` is not the key from the **local** dashboard. Each engine has its own keys. |
 | Sending an event gives `401 invalid event key` | Use an event key from the local dashboard, and send it to `http://127.0.0.1:8787/e`. |
-| The app logs `the sync failed (400): invalid url` at start | The engine does not know the app's URL yet. Add the app (Connect), or sync once with `curl -X PUT <app-url>`. |
+| The app logs `the sync failed (400): invalid url` at start | The engine does not know the app's URL yet. Add the app (Connect), or, in dev mode, sync once with `curl -X PUT <app-url>`. |

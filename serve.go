@@ -23,7 +23,7 @@ const maxRequestBytes = 64 << 20
 //
 //   - POST runs a function (signed by the engine).
 //   - PUT syncs: sends the manifest to the engine and returns its answer.
-//     Call it on deploy, for example: curl -X PUT https://app/api/flow
+//     Signed like GET; in dev mode an unsigned PUT works too.
 //   - GET returns the manifest (signed GET with an empty body).
 //
 // Without a signing key, and not in dev mode, it answers every request with
@@ -34,7 +34,7 @@ const maxRequestBytes = 64 << 20
 // checks go on until Close.
 func (c *Client) Serve() http.Handler {
 	if c.signingKey == "" && !c.dev {
-		log.Printf("flow: FLOW_SIGNING_KEY is not set; app %s will refuse all requests (set FLOW_DEV=1 for local dev)", c.appID)
+		log.Printf("flow: FLOW_SIGNING_KEY is not set; app %s will refuse all requests (set FLOW_LOCAL_DEV=1 for local dev)", c.appID)
 	}
 	c.startBootSync()
 	return http.HandlerFunc(c.serveHTTP)
@@ -57,7 +57,7 @@ func writeError(w http.ResponseWriter, status int, name, message string) {
 
 func (c *Client) serveHTTP(w http.ResponseWriter, r *http.Request) {
 	if c.signingKey == "" && !c.dev {
-		writeError(w, http.StatusInternalServerError, "NoSigningKey", "FLOW_SIGNING_KEY is not set (set FLOW_DEV=1 for local dev)")
+		writeError(w, http.StatusInternalServerError, "NoSigningKey", "FLOW_SIGNING_KEY is not set (set FLOW_LOCAL_DEV=1 for local dev)")
 		return
 	}
 	switch r.Method {
@@ -153,6 +153,11 @@ func (c *Client) serveGet(w http.ResponseWriter, r *http.Request) {
 }
 
 func (c *Client) servePut(w http.ResponseWriter, r *http.Request) {
+	// Signed, like GET and POST (dev mode skips the check): an unsigned PUT from
+	// anyone could make the app sync, with a URL taken from their Host header.
+	if _, _, ok := c.readSigned(w, r); !ok {
+		return
+	}
 	status, body, err := c.Sync(r.Context(), c.serveURLFor(r))
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "SyncFailed", err.Error())

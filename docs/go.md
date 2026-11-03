@@ -60,7 +60,7 @@ every request with `500 NoSigningKey`.
 | `SigningKeyFallback` | `FLOW_SIGNING_KEY_FALLBACK` | The old key while you rotate. |
 | `EventKey` | `FLOW_EVENT_KEY` | For `client.Send` and `client.SendMany`. |
 | `BaseURL` | `FLOW_BASE_URL` | The engine's URL. |
-| `Dev` | `FLOW_DEV=1` | Turns off signature checks. Local tests only. |
+| `Dev` | `FLOW_LOCAL_DEV` | Turns off signature checks. On by itself for a local `FLOW_BASE_URL`. Local work only. |
 | `HTTPClient` | | Used for every call to the engine, and for sockets. Default `http.DefaultClient`. |
 | `NoStreaming` | | Turns off [streamed answers](protocol.md#streamed-answers-sdk-v060-and-later). |
 | `HeartbeatInterval` | | Time between heartbeats in a streamed answer. Default 20s. |
