@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v0.10.0
 
 - **`FLOW_DEV` is now `FLOW_LOCAL_DEV`.** Dev mode (no signature checks, and no keys
   needed with a local engine) is turned on with `FLOW_LOCAL_DEV=1`, the same name the
