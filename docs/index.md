@@ -36,7 +36,9 @@ const useCases = [
   },
 ];
 
-// The same map as the sidebar, with one line on each page.
+// Every page but the use cases (they have their own cards above), with one line on
+// each. Keep it in step with the sidebar in .vitepress/config.ts. scripts/check-docs.mjs
+// fails the build when a link here names a page that does not exist.
 const docsMap = [
   {
     title: 'Start here',
@@ -85,7 +87,7 @@ const docsMap = [
 <a class="fh-btn" :href="github" target="_blank" rel="noreferrer">GitHub</a>
 </div>
 </div>
-<div class="fh-run" role="img" aria-label="An example run of the hello-world function: two steps and a sleep, all done.">
+<div class="fh-run">
 <div class="fh-run-head">
 <span class="fh-run-name">hello-world</span>
 <span class="fh-badge">Completed</span>

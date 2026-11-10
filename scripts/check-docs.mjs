@@ -3,7 +3,10 @@
 //     with a matching #endregion after it (VitePress 1.6 quietly shows the whole
 //     file when the region is missing);
 //   - every link to a heading (page.md#anchor) points at a heading that exists,
-//     with the same anchors the site makes (see githubSlug in .vitepress/config.ts).
+//     with the same anchors the site makes (see githubSlug in .vitepress/config.ts);
+//   - every site link written in a page's own script or HTML (link: '/page' or
+//     withBase('/page'), as on the home page) names a page that exists. VitePress
+//     only checks links written as markdown.
 // Run: node scripts/check-docs.mjs (part of `bun run docs:build`).
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
@@ -47,6 +50,9 @@ for (const page of pages) {
     const target = m[1] ?? page;
     if (!anchors.has(target)) problems.push(`${page}: no page ${target}`);
     else if (!anchors.get(target).has(m[2])) problems.push(`${page}: ${target} has no heading #${m[2]}`);
+  }
+  for (const m of text.matchAll(/(?:\blink: |withBase\()'\/([^'#]*)(?:#[^']*)?'/g)) {
+    if (!anchors.has(`${m[1]}.md`)) problems.push(`${page}: no page /${m[1]}`);
   }
 }
 

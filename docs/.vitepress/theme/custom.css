@@ -8,8 +8,8 @@
  *
  * Amber is too light to read as text on the light background, so in light mode links
  * and buttons are navy and amber is only an accent (the logo, the bar under the home
- * title, the bar on the current sidebar item). Dark mode uses the same two colours the
- * other way round: navy background, amber links and buttons.
+ * title (home.css), the bar on the current sidebar item). Dark mode uses the same two
+ * colours the other way round: navy background, amber links and buttons.
  */
 
 :root {
@@ -117,7 +117,6 @@
 
 /* Square corners, as on the landing page. */
 .VPButton,
-.VPFeature,
 .VPNavBarSearch .DocSearch-Button,
 .vp-doc div[class*='language-'],
 .vp-code-group .tabs,
@@ -132,9 +131,7 @@
 /* Headings in the text font, a little tighter, like the landing page. */
 .vp-doc h1,
 .vp-doc h2,
-.vp-doc h3,
-.VPHero .name,
-.VPHero .text {
+.vp-doc h3 {
   font-weight: 600;
   letter-spacing: -0.02em;
 }
@@ -153,35 +150,6 @@
 /* The current page in the sidebar: an amber bar, like the accent on the landing page. */
 .VPSidebarItem.is-active > .item .indicator {
   background-color: var(--flow-amber);
-}
-
-/* Home: the short amber bar under the title. */
-.VPHero .text::after {
-  content: '';
-  display: block;
-  width: 72px;
-  height: 6px;
-  margin-top: 24px;
-  background: var(--flow-amber);
-}
-.VPHero.has-image .text::after {
-  margin-left: auto;
-  margin-right: auto;
-}
-@media (min-width: 960px) {
-  .VPHero.has-image .text::after {
-    margin-left: 0;
-  }
-}
-
-/* Home feature cards: white cards with a thin border, as on the landing page. The
-   default theme's own card rule is scoped, so this needs the parent class to win. */
-.VPFeatures .VPFeature {
-  background-color: var(--vp-c-bg-elv);
-  border: 1px solid var(--vp-c-border);
-}
-.VPFeature .title {
-  font-weight: 600;
 }
 
 /* Small labels in mono, upper case, spaced out, like the landing page's "HOSTED WORKFLOW ENGINE". */

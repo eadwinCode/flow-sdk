@@ -182,7 +182,7 @@
   line-height: 24px;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: var(--vp-c-text-3);
+  color: var(--vp-c-text-2);
 }
 .fh .fh-step-note {
   grid-column: 1 / -1;
