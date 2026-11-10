@@ -6,6 +6,7 @@ import { useData } from 'vitepress';
 import { watch } from 'vue';
 import type { Theme } from 'vitepress';
 import './custom.css';
+import './home.css';
 
 /** The phone's browser bar colour for each theme: navy in dark, the page colour in light. */
 const BAR_COLOR = { dark: '#0d1b2a', light: '#fbfaf7' };
